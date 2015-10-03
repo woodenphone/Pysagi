@@ -43,7 +43,7 @@ class boards(Base):
     """Class that defines the boards table in the DB"""
     __tablename__ = "boards"
     # Columns
-    board_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    board_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
     board_name = sqlalchemy.Column(sqlalchemy.UnicodeText())
     board_shortname = sqlalchemy.Column(sqlalchemy.UnicodeText())
     api_url = sqlalchemy.Column(sqlalchemy.UnicodeText())
@@ -54,7 +54,7 @@ class threads(Base):
     """Class that defines the threads table in the DB"""
     __tablename__ = "threads"
     # Columns
-    thread_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    thread_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
 
 
 
@@ -62,7 +62,7 @@ class posts(Base):
     """Class that defines the posts table in the DB"""
     __tablename__ = "posts"
     # Columns
-    post_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    post_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
 
 
 
@@ -71,7 +71,7 @@ class media(Base):
     """Class that defines the media table in the DB"""
     __tablename__ = "media"
     # Columns
-    media_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    media_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
 
 
 
