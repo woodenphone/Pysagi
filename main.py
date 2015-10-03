@@ -20,8 +20,16 @@ from tables import *
 
 
 
+
 def main():
-    pass
+    try:
+        setup_logging(log_file_path=os.path.join("debug","video-handlers-log.txt"))
+        debug()
+    except Exception, e:# Log fatal exceptions
+        logging.critical("Unhandled exception!")
+        logging.exception(e)
+    return
+
 
 if __name__ == '__main__':
     main()
