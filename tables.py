@@ -47,6 +47,7 @@ class boards(Base):
     board_name = sqlalchemy.Column(sqlalchemy.UnicodeText())
     board_shortname = sqlalchemy.Column(sqlalchemy.UnicodeText())
     api_url = sqlalchemy.Column(sqlalchemy.UnicodeText())
+    hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
 
 
 
@@ -55,7 +56,8 @@ class threads(Base):
     __tablename__ = "threads"
     # Columns
     thread_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-
+    time_of_deletion = False
+    hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
 
 
 class posts(Base):
@@ -63,8 +65,8 @@ class posts(Base):
     __tablename__ = "posts"
     # Columns
     post_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-
-
+    time_of_deletion = False
+    hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
 
 
 class media(Base):
@@ -72,8 +74,14 @@ class media(Base):
     __tablename__ = "media"
     # Columns
     media_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
+    hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
+    poster_filename = False
+    board_filename = False
+    local_filename = False
 
-
+    size_in_bytes = False
+    sha512_hash = False
+    md5_base64_hash = False
 
 
 class media_associations(Base):
