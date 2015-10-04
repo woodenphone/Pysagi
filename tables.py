@@ -56,8 +56,14 @@ class threads(Base):
     __tablename__ = "threads"
     # Columns
     thread_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-    time_of_deletion = False
+    board_id = False#TODO
+    time_of_deletion = False#TODO
+    time_last_updated = False#TODO
+    time_las_bumped = False#TODO
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
+    sticky = sqlalchemy.Column(sqlalchemy.Boolean())# was this thread a sticky?
+    locked = sqlalchemy.Column(sqlalchemy.Boolean())# was this thread locked?
+    number_of_replies = None#TODO
 
 
 class posts(Base):
@@ -65,7 +71,8 @@ class posts(Base):
     __tablename__ = "posts"
     # Columns
     post_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-    time_of_deletion = False
+    thread_id = False#TODO
+    time_of_deletion = False#TODO
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
 
 
@@ -75,13 +82,20 @@ class media(Base):
     # Columns
     media_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
-    poster_filename = False
-    board_filename = False
-    local_filename = False
+    poster_filename = False#TODO
+    board_filename = False#TODO
+    local_filename = False#TODO
+    local_op_thumb_filename = False#TODO
+    local_reply_thumb_filename = False#TODO
+    width = False#TODO
+    height = False#TODO
+    filesize_in_bytes = False#TODO
+    thumbnail_width = False#TODO
+    thumbnail_height = False#TODO
+    md5_base64_hash = False#TODO
+    sha512_hash = False#TODO
+    banned = False#TODO
 
-    size_in_bytes = False
-    sha512_hash = False
-    md5_base64_hash = False
 
 
 class media_associations(Base):

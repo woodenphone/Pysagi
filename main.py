@@ -139,15 +139,13 @@ def process_thread(board_config,thread_id):
     	allow_fail=False)
 
     # Seperate posts out
-
-
     # Seperate post entries from the page HTML so we can process them seperately
     # http://stackoverflow.com/questions/5041008/handling-class-attribute-in-beautifulsoup
     soup = BeautifulSoup(thread_html, "html.parser")
     post_html_segments = soup.findAll("div", ["postContainer"])
     #logging.debug("post_html_segments: "+repr(post_html_segments))
 
-    posts = {}
+    thread_posts = {}# Staging for post data before we feed it into the DB
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
@@ -164,6 +162,7 @@ def process_thread(board_config,thread_id):
             assert(False)
 
         # Get post number
+        #TODO
 
         # Get post time
         post_time_String = post_html_segment.find(["time"]).text
@@ -179,13 +178,83 @@ def process_thread(board_config,thread_id):
 
         # Find post image(s) (if any)
         post_image_segments = post_html_segment.findAll("p", ["fileinfo"])
+        post_images = []# Staging for image data before we feed it into the post entry
         image_position = 0
-        for post_image_segment in post_image_segments:
+        for post_image_segment in post_image_segments:# Iterate through BeautifulSoup results
             image_position += 1
+            post_image_segment_html = post_image_segment.prettify()
             logging.debug("post_image_segment: "+repr(post_image_segment))
+
+            # Find location of image file
+            # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
+            image_link = re.search("""href=["']([^"'<>"]+/src/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
+            if image_link[0] == u"/":# Convert relative links to absolute
+                absolute_image_link = board_config["relative_image_link_prefix"]+image_link
+            else:# If we already have an absolute link
+                absolute_image_link = image_link
+            logging.debug("absolute_image_link: "+repr(absolute_image_link))
+            assert(absolute_image_link[0:4]==u"http")
+
+            # Get server filename for image
+            # ex. 1437401812560.jpg
+            server_image_filename = absolute_image_link.split("/")[-1]
+            logging.debug("server_image_filename: "+repr(server_image_filename))
+            assert("/" not in server_thumbnail_filename)
+            assert("." in server_image_filename)
+
+            # Get thumbnail location
+            # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
+            thumbnail_link = re.search("""href=["']([^"'<>"]+/thumb/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
+            if thumbnail_link[0] == u"/":# Convert relative links to absolute
+                absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
+            else:# If we already have an absolute link
+                absolute_thumbnail_link = thumbnail_link
+            logging.debug("absolute_thumbnail_link: "+repr(absolute_thumbnail_link))
+            assert(absolute_thumbnail_link[0:4]==u"http")
+
+            # Get server filename for thumbnail
+            # ex. 1437401812560.jpg
+            server_image_filenameserver_thumbnail_filename = absolute_thumbnail_link.split("/")[-1]
+            logging.debug("server_thumbnail_filename: "+repr(server_thumbnail_filename))
+            assert("/" not in server_thumbnail_filename)
+            assert("." in server_thumbnail_filename)
+
+
+            # Find original filename
+            # <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>
+            # data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png"
+            original_image_filename = re.search("""data-fn-fullname=["']([^"'<>]+)["']""", post_image_segment_html, re.IGNORECASE).group(1)
+            logging.debug("original_image_filename: "+repr(original_image_filename))
+            assert("/" not in original_image_filename)
+            assert("." in original_image_filename)
+
+            # Find out if the image is spoilered
+            image_is_spoilered = ("""src="/static/spoiler.png""" in post_image_segment_html)
+            logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
+
+            # Find (reported) filesize of image
+            #TODO
+
+            # Find (reported) dimensions of image
+            #TODO
+
+            # Collect all data about image into once place for staging before DB stuff is done
+            post_image = {#TODO
+                "image_position":image_position,# Position of image in post, starting from 1
+                }
+            post_images += post_image
+            continue
+
+        # Collect all data about post into once place for staging before DB stuff is done
+        thread_post = {#TODO
+            "":"",#
+            }
+        thread_posts += thread_post
+        continue
 
 
     # Insert / update thread in DB
+    #TODO
 
     return
 
@@ -220,6 +289,8 @@ def debug():
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
         "thread_url_suffix":".html",# The thread url after the thread number
+        "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
+        "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
         }
     process_thread(
         board_config,
