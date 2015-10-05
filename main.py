@@ -38,7 +38,7 @@ def process_catalog(board_config,old_catalog={}):
         )
     # Run updates
     for thread_to_update in threads_to_update:
-        process_thread(board_config, thread_id)
+        process_thread(board_config, thread_to_update)
     return new_catalog
 
 
@@ -46,7 +46,7 @@ def process_catalog(board_config,old_catalog={}):
 def read_catalog(board_config):
     """Process threads from the catalog
     https://www.ponychan.net/anon/catalog.html"""
-    catalog_url=board_config[catalog_url]
+    catalog_url = board_config["catalog_page_url"]
     # Load catalog page
     catalog_html = get_url(catalog_url)
     if catalog_html is None:
@@ -84,33 +84,34 @@ def read_catalog(board_config):
         logging.debug("reply_count: "+repr(reply_count))
 
         # Store data about this thread for processing
-        current_catalog_threads[thread_id] = {
-            "reply_count":reply_count,
-            "thread_position_on_page":thread_position_on_page,
+        current_catalog_threads[thread_id] = {# TODO
+            "reply_count":reply_count,# How many replies were we told the thread has?
+            "thread_position_on_page":thread_position_on_page,# Where is the thread on the page, starting at 1
+            "thread_id":thread_id,# Server side id for the thread
             }
         continue
     logging.debug("current_catalog_threads: "+repr(current_catalog_threads))
     return current_catalog_threads
 
 
-def compare_catalog_threads(old_catalog,new_catalog):
+def compare_catalog_threads(board_config,old_catalog,new_catalog):
     """compare new vs old catalog results and decide if updates are needed"""
     threads_to_update = []
     # Compare new catalog data to previous catalog data
-    for thread_id in current_catalog_threads.keys():
-        current_catalog_thread = current_catalog_threads["thread_id"]
+    for thread_id in new_catalog.keys():
+        current_catalog_thread = new_catalog[thread_id]
         logging.debug("current_catalog_thread: "+repr(current_catalog_thread))
 
         # Was this in previous catalog?
-        if thread_id not in previous_catalog_threads.keys():
+        if thread_id not in old_catalog.keys():
             logging.debug("Thread was not in previous catalog, processing. "+repr(thread_id))
-            threads_to_update += thread_id
+            threads_to_update += [thread_id]
             continue
 
         # Compare the reply count
-        elif current_catalog_thread["reply_count"] != previous_catalog_threads[thread_id]["reply_count"]:
+        elif current_catalog_thread["reply_count"] != old_catalog[thread_id]["reply_count"]:
             logging.debug("Thread has more replies than previous catalog, processing. "+repr(thread_id))
-            threads_to_update += thread_id
+            threads_to_update += [thread_id]
             continue
 
         # Compare the thread position in the catalog
@@ -131,7 +132,7 @@ def process_thread(board_config,thread_id):
     if thread_html is None:
     	logging.error("Could not load thread: "+repr(thread_url))
     	return
-    logging.debug("thread_html: "+repr(thread_html))
+    #logging.debug("thread_html: "+repr(thread_html))
     save_file(
     	file_path=os.path.join("debug","thread.html"),
     	data=thread_html,
@@ -145,7 +146,7 @@ def process_thread(board_config,thread_id):
     post_html_segments = soup.findAll("div", ["postContainer"])
     #logging.debug("post_html_segments: "+repr(post_html_segments))
 
-    thread_posts = {}# Staging for post data before we feed it into the DB
+    thread_posts = []# Staging for post data before we feed it into the DB
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
@@ -153,12 +154,20 @@ def process_thread(board_config,thread_id):
 
         # Is post OP? (First in thread)
         # <div class="post op post_532843 post_anon-532843" id="reply_532843">
-        post_is_op = ("post op post_" in post_html_segment.prettify())
+        # <div class="post op mature_post post_535762 post_anon-535762" id="reply_535762">
+        post_is_op = (
+            ("post op post_" in post_html_segment.prettify()) or
+            ("post op mature_post post_" in post_html_segment.prettify())
+            )
         # If post is not OP, it should be reply, so break if it isn't
         # <div class="post reply post_532905 post_anon-532905" data-thread="532843" id="reply_532905">
-        post_is_reply = ("post reply post_" in post_html_segment.prettify())
+        post_is_reply = (
+            ("post reply post_" in post_html_segment.prettify()) or
+            ("post reply mature_post post_" in post_html_segment.prettify())
+            )
         post_was_op_xor_reply = (post_is_op != post_is_reply)
         if not post_was_op_xor_reply:
+            logging.error("Post was not OP xor reply!")
             logging.debug("locals: "+repr(locals()))
             assert(False)
 
@@ -207,7 +216,9 @@ def process_thread(board_config,thread_id):
             assert("." in server_image_filename)
 
             # Find out if the image is spoilered
-            image_is_spoilered = ("""src="/static/spoiler.png""" in post_image_segment_html)
+            # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1440564930079.png">1440564930079.png</a> <span class="morefileinfo">(Spoiler Image, 389.27 KB, 800x560, <a class="post-filename" download="1stporn.png" href="/anon/src/1440564930079.png" title="Save as original filename">1stporn.png</a>)</span></p>
+            # <span class="morefileinfo">(Spoiler Image,
+            image_is_spoilered = ("""src="/static/spoiler.png""" in post_html_segment.prettify())
             logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
 
             if image_is_spoilered:
@@ -216,7 +227,7 @@ def process_thread(board_config,thread_id):
             else:# if not spoilered, grab the thumbnail stuff
                 # Get thumbnail location
                 # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
-                thumbnail_link = re.search("""href=["']([^"'<>"]+/thumb/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
+                thumbnail_link = re.search("""src=["']([^"'<>"]+/thumb/[^"'<>"]+)["']""", post_html_segment.prettify(), re.IGNORECASE).group(1)
                 if thumbnail_link[0] == u"/":# Convert relative links to absolute
                     absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
                 else:# If we already have an absolute link
@@ -232,40 +243,71 @@ def process_thread(board_config,thread_id):
                 assert("." in server_thumbnail_filename)
 
             # Find original filename
+            # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1437401812560.jpg">1437401812560.jpg</a> <span class="morefileinfo">(170.61 KB, 926x1205, <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>)</span></p>
             # <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>
             # data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png"
-            original_image_filename = re.search("""data-fn-fullname=["']([^"'<>]+)["']""", post_image_segment_html, re.IGNORECASE).group(1)
+            # data-fn-fullname=["']([^"'<>]+)["']
+
+            # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1441401127342.png">1441401127342.png</a> <span class="morefileinfo">(14.78 KB, 1920x1080, <a class="post-filename" download="KDDT Flag.png" href="/anon/src/1441401127342.png" title="Save as original filename">KDDT Flag.png</a>)</span></p>
+            # <a class="post-filename" title="Save as original filename" href="/anon/src/1441401127342.png" download="KDDT Flag.png">KDDT Flag.png</a>
+            # download="KDDT Flag.png"
+            # download=["']([^"'<>]+)["']>
+            original_image_filename = re.search("""download=["]([^"]+)["]""", post_image_segment_html, re.IGNORECASE).group(1)
             logging.debug("original_image_filename: "+repr(original_image_filename))
             assert("/" not in original_image_filename)
             assert("." in original_image_filename)
 
             # Grab filesize and dimensions of fullsize image
             # u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
-            filesize_and_dimensions_string = post_image_segment_html.find(["span"], ["morefileinfo"]).text
+            filesize_and_dimensions_string = post_image_segment.find(["span"], ["morefileinfo"]).text
             # Find (reported) filesize of image
             reported_filesize = parse_filesize(filesize_and_dimensions_string)
             logging.debug("reported_filesize: "+repr(reported_filesize))
 
             # Find (reported) dimensions of image
-            dimensions_string = filesize_and_dimensions_string.split(",")[1]# u" 926x1205"
-            image_width, image_height = parse_dimensions(dimensions_string)
+            image_width, image_height = parse_dimensions(filesize_and_dimensions_string)
             logging.debug("image_width: "+repr(image_width)+", image_height: "+repr(image_height))
 
             # Collect all data about image into once place for staging before DB stuff is done
             post_image = {#TODO
                 "image_position":image_position,# Position of image in post, starting from 1
+                "absolute_image_link":absolute_image_link,# Full URL to access image on server
+                "server_image_filename":server_image_filename,# Server filename for image
+                "image_is_spoilered":image_is_spoilered,# Boolean value of wheteher the image is spoilered (If true we don't get thumbnail)
+                "absolute_thumbnail_link":absolute_thumbnail_link,# Server thumbnail link if it exists, else None
+                "server_thumbnail_filename":server_thumbnail_filename,# Server thumbnail filename if it exists, else None
+                "original_image_filename":original_image_filename,# Uploader's filename for the image
+                "reported_filesize":reported_filesize,# Size in bytes we were told the image is (Floating point maths used here, ew)
+                "image_width":image_width,# Reported width of full image
+                "image_height":image_height,# Reported height of full image
+                "NONE":None,# comment
                 }
-            post_images += post_image
+            logging.debug("post_image: "+repr(post_image))
+            post_images += [post_image]
             continue
 
         # Collect all data about post into once place for staging before DB stuff is done
         thread_post = {#TODO
-            "":"",#
+            "postition_in_thread":postition_in_thread,# Might not actually get used
+            "post_is_op":post_is_op,#
+            "post_is_reply":post_is_reply,# comment
+            "post_number":post_number,# comment
+            "NONE":None,# put time here once it's coded TODO
+            "post_name":post_name,# comment
+            "post_text":post_text,# comment
+            "post_images":post_images,# List of image dicts
+            "NONE":None,# comment
             }
-        thread_posts += thread_post
+        logging.debug("thread_post: "+repr(thread_post))
+        thread_posts += [thread_post]
         continue
-
-
+    logging.debug("thread_posts: "+repr(thread_posts))
+    # Collect all the information about the thread into one place for staging
+    thread_dict = {
+        "thread_id":thread_id,
+        "thread_posts":thread_posts
+        }
+    dummy_save_thread(thread_dict)
     # Insert / update thread in DB
     #TODO
 
@@ -275,12 +317,16 @@ def process_thread(board_config,thread_id):
 def parse_filesize(filesize_string):
     """
     Convert *chan style filesize strings into number of bytes
-    input: u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
-    output: 174704
+    input:
+        u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+        u'(29 KB, 127x160, Zombieshy-Lurk.png)'
+    output:
+        174704
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
+    logging.debug("filesize_string: "+repr(filesize_string))
     # Extract the number and unit
-    filesize_search = re.search("""(\d+.\d+)\s+(\w?b),""", filesize_string, re.IGNORECASE)
+    filesize_search = re.search("""(\d+(?:.\d+)?)\s+(\w?b),""", filesize_string, re.IGNORECASE)
     number_string = filesize_search.group(1)# u"170.61"
     unit_string = filesize_search.group(2).lower()# u"kb" OR u"b" OR u"mb"
     unmultiplied_size = float(number_string)
@@ -304,6 +350,7 @@ def parse_dimensions(dimensions_string):
     output: (926, 1205)
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
+    logging.debug("dimensions_string: "+repr(dimensions_string))
     dimensions_search = re.search(""",\s?(\d+)x(\d+),""", dimensions_string, re.IGNORECASE)
     width = int(dimensions_search.group(1))
     height = int(dimensions_search.group(2))
@@ -312,6 +359,17 @@ def parse_dimensions(dimensions_string):
     return (width, height)
 
 
+def dummy_save_thread(thread_dict):
+    """Pretend to save the thread"""
+    json_to_save = json.dumps(thread_dict)
+    filename = str(thread_dict["thread_id"])+".json"
+    save_file(
+    	file_path=os.path.join("debug", "json_threads", filename),
+    	data=json_to_save,
+    	force_save=True,
+    	allow_fail=False
+        )
+    return
 
 
 def bah():
