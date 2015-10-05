@@ -30,6 +30,12 @@ def process_catalog(board_config,old_catalog={}):
     Takes the previous output of the function as input to remember what threads it's looked at"""
     # Read catalog page
     new_catalog = read_catalog(board_config)
+
+    # Detect what is dead
+    #TODO
+    # Mark dead threads as dead
+    #TODO
+
     # Decide what to update
     threads_to_update = compare_catalog_threads(
         board_config,
@@ -302,12 +308,14 @@ def process_thread(board_config,thread_id):
         thread_posts += [thread_post]
         continue
     logging.debug("thread_posts: "+repr(thread_posts))
+
     # Collect all the information about the thread into one place for staging
     thread_dict = {
         "thread_id":thread_id,
         "thread_posts":thread_posts
         }
-    dummy_save_thread(thread_dict)
+
+    dummy_save_thread(board_config,thread_dict)
     # Insert / update thread in DB
     #TODO
 
@@ -359,8 +367,42 @@ def parse_dimensions(dimensions_string):
     return (width, height)
 
 
-def dummy_save_thread(thread_dict):
+def dummy_save_images(board_config,thread_dict):
+    """Pretend to save images"""
+    logging.debug("Saving images...")
+    thread_posts = thread_dict["thread_posts"]
+    # Get all the images together in one place
+    thread_images = []
+    for thread_post in thread_posts:
+        post_images = thread_post["post_images"]
+        thread_images += post_images
+
+    # Process each image
+    for thread_image in thread_images:
+        logging.debug("thread_image: "+repr(thread_image))
+        absolute_image_link = thread_image["absolute_image_link"]
+        image_filename = thread_image["server_image_filename"]
+        image_file_path = os.path.join("images", image_filename)
+        # Load image
+        image_data = get_url(absolute_image_link)
+        if image_data is None:
+        	logging.error("Could not load image_data: "+repr(image_data))
+        	continue
+        save_file(
+        	file_path=os.path.join("debug", image_file_path),
+        	data=image_data,
+        	force_save=True,
+        	allow_fail=False)
+        continue
+
+    logging.debug("Finished saving images")
+    return
+
+
+
+def dummy_save_thread(board_config,thread_dict):
     """Pretend to save the thread"""
+    logging.debug("Saving thread...")
     json_to_save = json.dumps(thread_dict)
     filename = str(thread_dict["thread_id"])+".json"
     save_file(
@@ -369,6 +411,8 @@ def dummy_save_thread(thread_dict):
     	force_save=True,
     	allow_fail=False
         )
+    dummy_save_images(board_config,thread_dict)
+    logging.debug("Finished saving thread")
     return
 
 
