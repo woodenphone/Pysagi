@@ -150,6 +150,7 @@ def process_thread(board_config,thread_id):
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
         logging.debug("post_html_segment: "+repr(post_html_segment))
+
         # Is post OP? (First in thread)
         # <div class="post op post_532843 post_anon-532843" id="reply_532843">
         post_is_op = ("post op post_" in post_html_segment.prettify())
@@ -162,11 +163,14 @@ def process_thread(board_config,thread_id):
             assert(False)
 
         # Get post number
-        #TODO
+        # <a class="post_no citelink" href="/anon/res/538340.html#541018">541018</a>
+        post_number = int(post_html_segment.find(["a"], ["citelink"]).text)
+        logging.debug("post_number: "+repr(post_number))
 
         # Get post time
-        post_time_String = post_html_segment.find(["time"]).text
-        logging.debug("post_time_String: "+repr(post_time_String))
+        post_time_string = post_html_segment.find(["time"]).text
+        logging.debug("post_time_string: "+repr(post_time_string))
+        #TODO convert to unix time
 
         # Get post username
         post_name = post_html_segment.find(["span"], ["name"]).text
@@ -199,26 +203,33 @@ def process_thread(board_config,thread_id):
             # ex. 1437401812560.jpg
             server_image_filename = absolute_image_link.split("/")[-1]
             logging.debug("server_image_filename: "+repr(server_image_filename))
-            assert("/" not in server_thumbnail_filename)
+            assert("/" not in server_image_filename)
             assert("." in server_image_filename)
 
-            # Get thumbnail location
-            # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
-            thumbnail_link = re.search("""href=["']([^"'<>"]+/thumb/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
-            if thumbnail_link[0] == u"/":# Convert relative links to absolute
-                absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
-            else:# If we already have an absolute link
-                absolute_thumbnail_link = thumbnail_link
-            logging.debug("absolute_thumbnail_link: "+repr(absolute_thumbnail_link))
-            assert(absolute_thumbnail_link[0:4]==u"http")
+            # Find out if the image is spoilered
+            image_is_spoilered = ("""src="/static/spoiler.png""" in post_image_segment_html)
+            logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
 
-            # Get server filename for thumbnail
-            # ex. 1437401812560.jpg
-            server_image_filenameserver_thumbnail_filename = absolute_thumbnail_link.split("/")[-1]
-            logging.debug("server_thumbnail_filename: "+repr(server_thumbnail_filename))
-            assert("/" not in server_thumbnail_filename)
-            assert("." in server_thumbnail_filename)
+            if image_is_spoilered:
+                absolute_thumbnail_link = None
+                server_thumbnail_filename = None
+            else:# if not spoilered, grab the thumbnail stuff
+                # Get thumbnail location
+                # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
+                thumbnail_link = re.search("""href=["']([^"'<>"]+/thumb/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
+                if thumbnail_link[0] == u"/":# Convert relative links to absolute
+                    absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
+                else:# If we already have an absolute link
+                    absolute_thumbnail_link = thumbnail_link
+                logging.debug("absolute_thumbnail_link: "+repr(absolute_thumbnail_link))
+                assert(absolute_thumbnail_link[0:4]==u"http")
 
+                # Get server filename for thumbnail
+                # ex. 1437401812560.jpg
+                server_thumbnail_filename = absolute_thumbnail_link.split("/")[-1]
+                logging.debug("server_thumbnail_filename: "+repr(server_thumbnail_filename))
+                assert("/" not in server_thumbnail_filename)
+                assert("." in server_thumbnail_filename)
 
             # Find original filename
             # <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>
@@ -228,15 +239,17 @@ def process_thread(board_config,thread_id):
             assert("/" not in original_image_filename)
             assert("." in original_image_filename)
 
-            # Find out if the image is spoilered
-            image_is_spoilered = ("""src="/static/spoiler.png""" in post_image_segment_html)
-            logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
-
+            # Grab filesize and dimensions of fullsize image
+            # u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+            filesize_and_dimensions_string = post_image_segment_html.find(["span"], ["morefileinfo"]).text
             # Find (reported) filesize of image
-            #TODO
+            reported_filesize = parse_filesize(filesize_and_dimensions_string)
+            logging.debug("reported_filesize: "+repr(reported_filesize))
 
             # Find (reported) dimensions of image
-            #TODO
+            dimensions_string = filesize_and_dimensions_string.split(",")[1]# u" 926x1205"
+            image_width, image_height = parse_dimensions(dimensions_string)
+            logging.debug("image_width: "+repr(image_width)+", image_height: "+repr(image_height))
 
             # Collect all data about image into once place for staging before DB stuff is done
             post_image = {#TODO
@@ -257,6 +270,47 @@ def process_thread(board_config,thread_id):
     #TODO
 
     return
+
+
+def parse_filesize(filesize_string):
+    """
+    Convert *chan style filesize strings into number of bytes
+    input: u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+    output: 174704
+    https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
+    """
+    # Extract the number and unit
+    filesize_search = re.search("""(\d+.\d+)\s+(\w?b),""", filesize_string, re.IGNORECASE)
+    number_string = filesize_search.group(1)# u"170.61"
+    unit_string = filesize_search.group(2).lower()# u"kb" OR u"b" OR u"mb"
+    unmultiplied_size = float(number_string)
+    # Multiply by the unit and return value
+    if unit_string == "b":# Bytes
+        return int(unmultiplied_size)
+    elif unit_string == "kb":# Kilobytes
+        return int(unmultiplied_size * 1024)
+    elif unit_string == "mb":# Megabytes
+        return int(unmultiplied_size * 1024 * 1024)
+    # Deal with invalid input
+    logging.error("Could not parse filesize!")
+    logging.debug("locals(): "+repr(locals()))
+    raise ValueError
+
+
+def parse_dimensions(dimensions_string):
+    """
+    Convert *chan style dimensions strings into integers for height and width
+    input: u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+    output: (926, 1205)
+    https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
+    """
+    dimensions_search = re.search(""",\s?(\d+)x(\d+),""", dimensions_string, re.IGNORECASE)
+    width = int(dimensions_search.group(1))
+    height = int(dimensions_search.group(2))
+    assert(width > 0)
+    assert(height > 0)
+    return (width, height)
+
 
 
 
