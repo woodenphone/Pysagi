@@ -12,6 +12,7 @@
 
 import time
 import datetime
+import calendar
 import os
 import sys
 import re
@@ -710,7 +711,35 @@ def find_file_size(file_path):
 
 
 
+
+def parse_ponychan_datetime(time_string):
+    """
+    Parse ponychan's timestamp and output the equivalent in unixtime
+    The Z probably stands for "zulu" A.K.A. UTC+0
+    input:
+        2013-02-16T15:51:39Z
+    output:
+        bar
+    """
+    logging.debug("time_string: "+repr(time_string))
+    # "2013-02-16T15:51:39Z"
+    # "%Y-%m-%dT%H:%M:%SZ"
+    post_time = time.strptime(time_string, "%Y-%m-%dT%H:%M:%SZ")
+    post_unix_time = calendar.timegm(post_time)
+    logging.debug("post_unix_time: "+repr(post_unix_time))
+    return post_unix_time
+
+
+
+
+
+
+
+
 def main():
+    # test parse_ponychan_datetime(time_string)
+    print parse_ponychan_datetime(time_string="""2013-02-16T15:51:39Z""")
+    return
     # Test split_list
     print split_list(range(7), 2)
     print split_list(range(6), 3)

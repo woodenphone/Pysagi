@@ -56,13 +56,18 @@ class threads(Base):
     __tablename__ = "threads"
     # Columns
     thread_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-    board_id = False#TODO
-    time_of_deletion = False#TODO
-    time_last_updated = False#TODO
-    time_las_bumped = False#TODO
+    board_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("boards.board_id"))# Foreign key#TODO
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
+    #
     sticky = sqlalchemy.Column(sqlalchemy.Boolean())# was this thread a sticky?
     locked = sqlalchemy.Column(sqlalchemy.Boolean())# was this thread locked?
+    #
+    thread_number = sqlalchemy.Column(sqlalchemy.BigInteger)# Number of the thread on the origin server
+    time_of_deletion = sqlalchemy.Column(sqlalchemy.BigInteger)# Unix time deletion was noticed
+    time_last_updated = sqlalchemy.Column(sqlalchemy.BigInteger)# Unix time we last updated this thread
+    time_las_bumped = sqlalchemy.Column(sqlalchemy.BigInteger)# Unix time last bump was noticed
+
+
     number_of_replies = None#TODO
 
 
@@ -71,9 +76,18 @@ class posts(Base):
     __tablename__ = "posts"
     # Columns
     post_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
-    thread_id = False#TODO
-    time_of_deletion = False#TODO
+    thread_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("threads.thread_id"))# Foreign key#TODO
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
+    #
+    time_of_deletion = sqlalchemy.Column(sqlalchemy.BigInteger)# Unix time post deletion was noticed
+    #
+    post_title = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    post_text = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    poster_name = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    poster_tripcode = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    poster_email = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+
+
 
 
 class media(Base):
@@ -82,29 +96,48 @@ class media(Base):
     # Columns
     media_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
     hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
-    poster_filename = False#TODO
-    board_filename = False#TODO
-    local_filename = False#TODO
-    local_op_thumb_filename = False#TODO
-    local_reply_thumb_filename = False#TODO
-    width = False#TODO
-    height = False#TODO
-    filesize_in_bytes = False#TODO
-    thumbnail_width = False#TODO
-    thumbnail_height = False#TODO
-    md5_base64_hash = False#TODO
-    sha512_hash = False#TODO
-    banned = False#TODO
+    banned = False# unknown use
+    #
+    poster_filename = sqlalchemy.Column(sqlalchemy.UnicodeText())#Filename reported for origin
+    board_filename = sqlalchemy.Column(sqlalchemy.UnicodeText())# Filename on remote server
+    local_filename = sqlalchemy.Column(sqlalchemy.UnicodeText())# Filename in local storage
+    #
+    width = sqlalchemy.Column(sqlalchemy.BigInteger)# Width of full image
+    height = sqlalchemy.Column(sqlalchemy.BigInteger)# Height of full image
+    #
+    filesize_in_bytes = sqlalchemy.Column(sqlalchemy.BigInteger)#
+    md5_base64_hash = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    sha512base16_hash = sqlalchemy.Column(sqlalchemy.UnicodeText())#
 
+
+class thumbnails(Base):
+    """Class that defines the thumbnails table in the DB"""
+    __tablename__ = "thumbnails"
+    # Columns
+    #
+    thumbnail_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
+    hidden = sqlalchemy.Column(sqlalchemy.Boolean())# Should this be hidden from users?
+    is_op_thumbnail = sqlalchemy.Column(sqlalchemy.Boolean())# TRUE: is op; FALSE: is reply
+    #
+    thumbnail_width = sqlalchemy.Column(sqlalchemy.BigInteger)# Width of thumbnail
+    thumbnail_height = sqlalchemy.Column(sqlalchemy.BigInteger)# Height of thumbnail
+    #
+    local_filename = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    filesize_in_bytes = sqlalchemy.Column(sqlalchemy.BigInteger)#
+    md5_base64_hash = sqlalchemy.Column(sqlalchemy.UnicodeText())#
+    sha512_hash = sqlalchemy.Column(sqlalchemy.UnicodeText())#
 
 
 class media_associations(Base):
-    """Class that defines the media-post association table in the DB"""
+    """Class that defines the media-thumbnail-post association table in the DB"""
     __tablename__ = "media_associations"
     # Columns
     association_id = sqlalchemy.Column(sqlalchemy.BigInteger(), primary_key=True)
     post_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("posts.post_id")) # Local post ID
     media_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("media.media_id")) # Local media ID
+    op_thumbnail_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("thumbnails.thumbnail_id")) # Local thumbnail ID of OP thumbnail
+    reply_thumbnail_id = sqlalchemy.Column(sqlalchemy.BigInteger(), sqlalchemy.ForeignKey("thumbnails.thumbnail_id")) # Local thumbnail ID of reply thumbnail
+    spoilered = sqlalchemy.Column(sqlalchemy.Boolean())# IS the image spoilered in the post?
 # /SQLAlchemy table setup
 
 

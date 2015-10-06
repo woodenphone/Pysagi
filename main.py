@@ -152,6 +152,18 @@ def process_thread(board_config,thread_id):
     post_html_segments = soup.findAll("div", ["postContainer"])
     #logging.debug("post_html_segments: "+repr(post_html_segments))
 
+    # Detect if thread is currently stickied
+    # <img class="icon" title="Sticky" src="/static/sticky.gif" alt="Sticky">
+    thread_is_sticky = ("""src="/static/sticky.gif""" in thread_html)#TODO
+    logging.debug("thread_is_sticky: "+repr(thread_is_sticky))
+
+
+    # Detect if thread is currently locked
+    # <img class="icon" title="Locked" src="/static/locked.gif" alt="Locked">
+    thread_is_locked = ("""src="/static/locked.gif""" in thread_html)#TODO
+    logging.debug("thread_is_locked: "+repr(thread_is_locked))
+
+    # Process posts
     thread_posts = []# Staging for post data before we feed it into the DB
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
@@ -176,6 +188,8 @@ def process_thread(board_config,thread_id):
             logging.error("Post was not OP xor reply!")
             logging.debug("locals: "+repr(locals()))
             assert(False)
+        if postition_in_thread == 1:
+            assert(post_is_op)
 
         # Get post number
         # <a class="post_no citelink" href="/anon/res/538340.html#541018">541018</a>
@@ -183,9 +197,12 @@ def process_thread(board_config,thread_id):
         logging.debug("post_number: "+repr(post_number))
 
         # Get post time
-        post_time_string = post_html_segment.find(["time"]).text
-        logging.debug("post_time_string: "+repr(post_time_string))
-        #TODO convert to unix time
+        # u"<time datetime="2013-02-16T15:51:39Z">"
+        # <time\sdatetime="([\w:-]+)">
+        # u"2013-02-16T15:51:39Z"
+        post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", post_html_segment.prettify(), re.IGNORECASE).group(1)
+        post_time = parse_ponychan_datetime(post_time_string)
+        logging.debug("post_time: "+repr(post_time))
 
         # Get post username
         post_name = post_html_segment.find(["span"], ["name"]).text
@@ -194,6 +211,34 @@ def process_thread(board_config,thread_id):
         # Get post text
         post_text = post_html_segment.find(["div"], ["body"]).text
         logging.debug("post_text: "+repr(post_text))
+
+        # Get post title (If any)
+        title_search = post_html_segment.find(["span"], ["subject"])
+        if title_search:
+            post_title = title_search.text
+        else:
+            post_title = None# Represents the post having no title
+        logging.debug("post_title: "+repr(post_title))
+
+        # Get poster email (If any)
+        # u"<a class="email namepart" href="mailto:guyandsam@yahoo.com">"
+        # <a\s*class="email\s*namepart"\s*href="mailto:([^"]+)">
+        poster_email_search = re.search("""<a\s*class="email\s*namepart"\s*href="mailto:([^"]+)">""", post_html_segment.prettify(), re.IGNORECASE)
+        if poster_email_search:
+            poster_email = poster_email_search.group(1)
+        else:
+            poster_email = None# Represents the post having no email address
+        logging.debug("poster_email: "+repr(poster_email))
+
+        # Get poster tripcode (if any)
+        # <span class="trip">!2EpsHX3E3s</span>
+        poster_tripcode_search = post_html_segment.find(["span"], ["trip"])
+        if poster_tripcode_search:
+            poster_tripcode = poster_tripcode_search
+        else:
+            poster_tripcode = None# Represents the post having no email address
+        logging.debug("poster_tripcode: "+repr(poster_tripcode))
+
 
         # Find post image(s) (if any)
         post_image_segments = post_html_segment.findAll("p", ["fileinfo"])
@@ -286,7 +331,9 @@ def process_thread(board_config,thread_id):
                 "reported_filesize":reported_filesize,# Size in bytes we were told the image is (Floating point maths used here, ew)
                 "image_width":image_width,# Reported width of full image
                 "image_height":image_height,# Reported height of full image
-                "NONE":None,# comment
+                "is_op_thumb":None,# Is the thumbnail an OP thumbnail (larger)
+                "NONE":None,# TODO
+                "NONE":None,# TODO
                 }
             logging.debug("post_image: "+repr(post_image))
             post_images += [post_image]
@@ -295,14 +342,17 @@ def process_thread(board_config,thread_id):
         # Collect all data about post into once place for staging before DB stuff is done
         thread_post = {#TODO
             "postition_in_thread":postition_in_thread,# Might not actually get used
-            "post_is_op":post_is_op,#
-            "post_is_reply":post_is_reply,# comment
+            "post_is_op":post_is_op,# Boolean of whether this is the OP (first in thread)
+            "post_is_reply":post_is_reply,# SHOULD be the opposite boolean value of post_is_op
             "post_number":post_number,# comment
-            "NONE":None,# put time here once it's coded TODO
-            "post_name":post_name,# comment
-            "post_text":post_text,# comment
+            "post_time":post_time,# The time the post was posted, converted to unixtime
+            "post_name":post_name,# Name of the poster
+            "post_text":post_text,# The text/comment of the post
             "post_images":post_images,# List of image dicts
-            "NONE":None,# comment
+            "post_title":post_title,# The post title if it exists, else None object
+            "poster_email":poster_email,# The email address given by the poster (If any), otherwise None
+            "poster_tripcode":poster_tripcode,# tripcode of the post if there is one, otherwise None
+            "NONE":None,# TODO
             }
         logging.debug("thread_post: "+repr(thread_post))
         thread_posts += [thread_post]
@@ -311,8 +361,12 @@ def process_thread(board_config,thread_id):
 
     # Collect all the information about the thread into one place for staging
     thread_dict = {
-        "thread_id":thread_id,
-        "thread_posts":thread_posts
+        "thread_id":thread_id,# ID number of thread on origin server
+        "thread_posts":thread_posts,# The posts in this thread
+        "thread_is_sticky":thread_is_sticky,# Is the thread currently stickied?
+        "thread_is_locked":thread_is_locked,# Is the thread currently locked?
+        "NONE":None,# TODO
+        "NONE":None,# TODO
         }
 
     dummy_save_thread(board_config,thread_dict)
@@ -354,8 +408,10 @@ def parse_filesize(filesize_string):
 def parse_dimensions(dimensions_string):
     """
     Convert *chan style dimensions strings into integers for height and width
-    input: u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
-    output: (926, 1205)
+    input:
+        u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+    output:
+        (926, 1205)
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
     logging.debug("dimensions_string: "+repr(dimensions_string))
@@ -441,17 +497,26 @@ def bah():
 def debug():
     """where stuff is called to debug and test"""
 
-    board_config = {
+    board_config_anon = {
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
         "thread_url_suffix":".html",# The thread url after the thread number
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
         }
+    board_config_arch = {
+        "catalog_page_url":"https://www.ponychan.net/arch/catalog.html",# Absolute URL to access catalog page
+        "thread_url_prefix":"https://www.ponychan.net/arch/res/",# The thread url before the thread number
+        "thread_url_suffix":".html",# The thread url after the thread number
+        "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
+        "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
+        }
+
     process_thread(
-        board_config,
-        thread_id=532843
+        board_config=board_config_arch,
+        thread_id=2517907
         )
+    return
 
     process_catalog(
         board_config = board_config
