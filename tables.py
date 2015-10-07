@@ -39,11 +39,12 @@ from utils import * # General utility functions
 # SQLAlchemy table setup
 Base = declarative_base()
 
-class boards(Base):
+class Boards(Base):
     """Class that defines the boards table in the DB"""
     __tablename__ = "boards"
     # Columns
     board_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)# Local primary key
+    board_shortname = sqlalchemy.Column(sqlalchemy.UnicodeText())# MUST be unique
     board_name = sqlalchemy.Column(sqlalchemy.UnicodeText())
     board_shortname = sqlalchemy.Column(sqlalchemy.UnicodeText())
     api_url = sqlalchemy.Column(sqlalchemy.UnicodeText())
@@ -51,7 +52,7 @@ class boards(Base):
 
 
 
-class threads(Base):
+class Threads(Base):
     """Class that defines the threads table in the DB"""
     __tablename__ = "threads"
     # Columns

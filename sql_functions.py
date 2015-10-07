@@ -69,21 +69,126 @@ def check_if_media_url_in_DB(session,media_url):
         return None
 # /Media
 
+# Boards
+def get_board_id(session,board_shortname):
+    try:
+        board_id_query = sqlalchemy.select([Boards.board_id]).where(Boards.board_shortname == board_shortname)
+        blog_id_rows = session.execute(blog_id_query)
+        blog_id_row = blog_id_rows.fetchone()
+        if blog_id_row:
+            board_id = blog_id_row["board_id"]
+            logging.debug("board_id: "+repr(board_id))
+            return board_id
+        else:
+            # If board is not in DB, create a record for it and return the ID
+            # Create entry
+            board_dict = {}
+            board_dict["board_shortname"] = board_shortname
+            boards_row = Boards(**board_dict)
+            session.add(boards_row)
+            session.commit()
+
+            # Return board entry
+            return get_board_id(session,blog_url)
+    except err:
+        session.rollback()# Prevent DB damage
+        logging.exception(err)
+        raise# Propogate the exception so we can't ignore it
+# /Boards
 
 # Posts
+
+def get_thread_id(session,board_config,thread_dict):
+    """Get the ID for a thread's row, creating it if needed"""
+    try:
+        existing_thread_query = sqlalchemy.select([Threads]).\
+            where(Threads.thread_number == thread_dict["thread_number"])
+        existing_thread_rows = session.execute(existing_thread_query)
+        existing_thread_row = existing_thread_rows.fetchone()
+        if thread_row is None:
+            # Create the thread row
+            new_threads_row_dict = {}
+            new_threads_row_dict["thread_number"] = thread_dict["thread_number"]
+            new_threads_row_dict["thread_number"] = thread_dict["thread_number"]
+
+            new_threads_row = posts(**new_threads_row_dict)
+            session.add(new_threads_row)
+            session.flush()
+            thread_id = new_threads_row.thread_id
+        else:
+            # Grab ID from existing row
+            thread_id = existing_thread_row.thread_id
+        return thread_id
+    except err:
+        session.rollback()# Prevent DB damage
+        logging.exception(err)
+        raise# Propogate the exception so we can't ignore it
+
+
 def insert_thread(session,board_config,thread_dict):
     """Insert or update a thread of posts and images into the DB"""
-    # Check if thread is in the threads table and if it isn't, add it
-    # Compare the thread level stuff
+    try:
+        # Check if thread is in the threads table and if it isn't, add it
+        existing_thread_query = sqlalchemy.select([Threads]).\
+            where(Threads.thread_number == thread_dict["thread_number"])
+        existing_thread_rows = session.execute(existing_thread_query)
+        existing_thread_row = existing_thread_rows.fetchone()
+        if thread_row is None:
+            # Create the thread row
+            new_threads_row_dict = {}
+            new_threads_row_dict["thread_number"] = thread_dict["thread_number"]
+            new_threads_row = posts(**new_threads_row_dict)
+            session.add(new_threads_row)
+            session.flush()
+            thread_id = new_threads_row.thread_id
+        else:
+            # Grab ID from existing row
+            thread_id = existing_thread_row.thread_id
 
-    # Grab all the posts for the thread in the DB for comparison
-    # Compare each post in the thread
-    # for each post, insert images
+
+
+        # Update the thread row
+        if thread_dict["thread_is_sticky"]:
+            #TODO
+            pass
+        if thread_dict["thread_is_locked"]:
+            #TODO
+            pass
+        #TODO
+
+        # Find what posts we have from this thread we have in the DB
+        existing_posts_query = sqlalchemy.select([Posts]).\
+            where(Posts.thread_id == thread_id)
+        existing_posts_rows = session.execute(existing_posts_query)
+
+
+        for post_dict in thread_dict["posts"]:
+            # Check if post is in DB
+
+            if existing_post_row is None:
+                # Post is not in the DB
+
+
+
+
+
+        # Grab all the posts for the thread in the DB for comparison
+        # Compare each post in the thread
+        # for each post, insert images
+    except err:
+        session.rollback()# Prevent DB damage
+        logging.exception(err)
+        raise# Propogate the exception so we can't ignore it
+
 # /Posts
 
 # Threads
-def mark_thread_dead(session,board_config,thread_id):
+def mark_thread_dead(session,board_config,thread_number):
     """Mark a thread in the DB as deleted"""
+    thread_query = sqlalchemy.select([Threads]).\
+        where(Threads.thread_number == thread_dict["thread_number"])
+    thread_rows = session.execute(thread_query)
+    thread_row = thread_rows.fetchone()
 # /Threads
 
 

@@ -80,8 +80,8 @@ def read_catalog(board_config):
         # Get thread number
         catalink = thread_html_segment.find(["div","a"], ["catalink"])
         relative_link = catalink.attrs[u"href"]
-        thread_id = int(re.search("""res/(\d+)""", relative_link, re.IGNORECASE).group(1))# ex. 532843
-        logging.debug("thread_id: "+repr(thread_id))
+        thread_number = int(re.search("""res/(\d+)""", relative_link, re.IGNORECASE).group(1))# ex. 532843
+        logging.debug("thread_number: "+repr(thread_number))
 
         # Get reply count for thread
         catacount = thread_html_segment.find("div", ["catacount"])
@@ -90,10 +90,10 @@ def read_catalog(board_config):
         logging.debug("reply_count: "+repr(reply_count))
 
         # Store data about this thread for processing
-        current_catalog_threads[thread_id] = {# TODO
+        current_catalog_threads[thread_number] = {# TODO
             "reply_count":reply_count,# How many replies were we told the thread has?
             "thread_position_on_page":thread_position_on_page,# Where is the thread on the page, starting at 1
-            "thread_id":thread_id,# Server side id for the thread
+            "thread_number":thread_number,# Server side id for the thread
             }
         continue
     logging.debug("current_catalog_threads: "+repr(current_catalog_threads))
@@ -104,35 +104,35 @@ def compare_catalog_threads(board_config,old_catalog,new_catalog):
     """compare new vs old catalog results and decide if updates are needed"""
     threads_to_update = []
     # Compare new catalog data to previous catalog data
-    for thread_id in new_catalog.keys():
-        current_catalog_thread = new_catalog[thread_id]
+    for thread_number in new_catalog.keys():
+        current_catalog_thread = new_catalog[thread_number]
         logging.debug("current_catalog_thread: "+repr(current_catalog_thread))
 
         # Was this in previous catalog?
-        if thread_id not in old_catalog.keys():
-            logging.debug("Thread was not in previous catalog, processing. "+repr(thread_id))
-            threads_to_update += [thread_id]
+        if thread_number not in old_catalog.keys():
+            logging.debug("Thread was not in previous catalog, processing. "+repr(thread_number))
+            threads_to_update += [thread_number]
             continue
 
         # Compare the reply count
-        elif current_catalog_thread["reply_count"] != old_catalog[thread_id]["reply_count"]:
-            logging.debug("Thread has more replies than previous catalog, processing. "+repr(thread_id))
-            threads_to_update += [thread_id]
+        elif current_catalog_thread["reply_count"] != old_catalog[thread_number]["reply_count"]:
+            logging.debug("Thread has more replies than previous catalog, processing. "+repr(thread_number))
+            threads_to_update += [thread_number]
             continue
 
         # Compare the thread position in the catalog
         #if thread_position_on_page
         # up
-        logging.debug("No comparison triggered an update for this thread. "+repr(thread_id))
+        logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
         continue
     return threads_to_update
 
 
 
-def process_thread(board_config,thread_id):
+def process_thread(board_config,thread_number):
     """Update this thread in the DB"""
     # Thread URL is done this way so board-level config can change more easily
-    thread_url = board_config["thread_url_prefix"]+str(thread_id)+board_config["thread_url_suffix"]
+    thread_url = board_config["thread_url_prefix"]+str(thread_number)+board_config["thread_url_suffix"]
     # Load thread page
     thread_html = get_url(thread_url)
     if thread_html is None:
@@ -332,7 +332,7 @@ def process_thread(board_config,thread_id):
                 "image_width":image_width,# Reported width of full image
                 "image_height":image_height,# Reported height of full image
                 "is_op_thumb":None,# Is the thumbnail an OP thumbnail (larger)
-                "NONE":None,# TODO
+                "local_filename":None,# Set elsewhere
                 "NONE":None,# TODO
                 }
             logging.debug("post_image: "+repr(post_image))
@@ -361,7 +361,7 @@ def process_thread(board_config,thread_id):
 
     # Collect all the information about the thread into one place for staging
     thread_dict = {
-        "thread_id":thread_id,# ID number of thread on origin server
+        "thread_number":thread_number,# ID number of thread on origin server
         "thread_posts":thread_posts,# The posts in this thread
         "thread_is_sticky":thread_is_sticky,# Is the thread currently stickied?
         "thread_is_locked":thread_is_locked,# Is the thread currently locked?
@@ -429,30 +429,34 @@ def dummy_save_images(board_config,thread_dict):
     thread_posts = thread_dict["thread_posts"]
     # Get all the images together in one place
     thread_images = []
-    for thread_post in thread_posts:
+    for thread_post in thread_posts:# Process images for each post
         post_images = thread_post["post_images"]
-        thread_images += post_images
+        for post_image in post_images:# Process each image for this post
+            logging.debug("thread_image: "+repr(thread_image))
+            absolute_image_link = thread_image["absolute_image_link"]
+            image_filename = thread_image["server_image_filename"]
+            image_file_path = os.path.join("images", image_filename)
+            # Load image
+            image_data = get_url(absolute_image_link)
+            if image_data is None:
+            	logging.error("Could not load image_data: "+repr(image_data))
+            	continue
+            save_file(
+            	file_path=os.path.join("debug", image_file_path),
+            	data=image_data,
+            	force_save=True,
+            	allow_fail=False)
+            continue
 
-    # Process each image
-    for thread_image in thread_images:
-        logging.debug("thread_image: "+repr(thread_image))
-        absolute_image_link = thread_image["absolute_image_link"]
-        image_filename = thread_image["server_image_filename"]
-        image_file_path = os.path.join("images", image_filename)
-        # Load image
-        image_data = get_url(absolute_image_link)
-        if image_data is None:
-        	logging.error("Could not load image_data: "+repr(image_data))
-        	continue
-        save_file(
-        	file_path=os.path.join("debug", image_file_path),
-        	data=image_data,
-        	force_save=True,
-        	allow_fail=False)
-        continue
 
+
+
+
+
+
+    logging.debug("thread_dict: "+repr(thread_dict))
     logging.debug("Finished saving images")
-    return
+    returnt thread_dict
 
 
 
@@ -496,7 +500,7 @@ def bah():
 
 def debug():
     """where stuff is called to debug and test"""
-
+    session = sql_functions.connect_to_db()
     board_config_anon = {
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
@@ -513,12 +517,14 @@ def debug():
         }
 
     process_thread(
+        session=session,
         board_config=board_config_arch,
         thread_id=2517907
         )
     return
 
     process_catalog(
+        session=session,
         board_config = board_config
         )
 
