@@ -72,7 +72,7 @@ class Threads(Base):
     number_of_replies = None#TODO
 
 
-class posts(Base):
+class Posts(Base):
     """Class that defines the posts table in the DB"""
     __tablename__ = "posts"
     # Columns

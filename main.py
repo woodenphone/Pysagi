@@ -155,13 +155,13 @@ def process_thread(board_config,thread_number):
     # Detect if thread is currently stickied
     # <img class="icon" title="Sticky" src="/static/sticky.gif" alt="Sticky">
     thread_is_sticky = ("""src="/static/sticky.gif""" in thread_html)#TODO
-    logging.debug("thread_is_sticky: "+repr(thread_is_sticky))
+    #logging.debug("thread_is_sticky: "+repr(thread_is_sticky))
 
 
     # Detect if thread is currently locked
     # <img class="icon" title="Locked" src="/static/locked.gif" alt="Locked">
     thread_is_locked = ("""src="/static/locked.gif""" in thread_html)#TODO
-    logging.debug("thread_is_locked: "+repr(thread_is_locked))
+    #logging.debug("thread_is_locked: "+repr(thread_is_locked))
 
     # Process posts
     thread_posts = []# Staging for post data before we feed it into the DB
@@ -194,7 +194,7 @@ def process_thread(board_config,thread_number):
         # Get post number
         # <a class="post_no citelink" href="/anon/res/538340.html#541018">541018</a>
         post_number = int(post_html_segment.find(["a"], ["citelink"]).text)
-        logging.debug("post_number: "+repr(post_number))
+        #logging.debug("post_number: "+repr(post_number))
 
         # Get post time
         # u"<time datetime="2013-02-16T15:51:39Z">"
@@ -202,15 +202,15 @@ def process_thread(board_config,thread_number):
         # u"2013-02-16T15:51:39Z"
         post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", post_html_segment.prettify(), re.IGNORECASE).group(1)
         post_time = parse_ponychan_datetime(post_time_string)
-        logging.debug("post_time: "+repr(post_time))
+        #logging.debug("post_time: "+repr(post_time))
 
         # Get post username
         post_name = post_html_segment.find(["span"], ["name"]).text
-        logging.debug("post_name: "+repr(post_name))
+        #logging.debug("post_name: "+repr(post_name))
 
         # Get post text
         post_text = post_html_segment.find(["div"], ["body"]).text
-        logging.debug("post_text: "+repr(post_text))
+        #logging.debug("post_text: "+repr(post_text))
 
         # Get post title (If any)
         title_search = post_html_segment.find(["span"], ["subject"])
@@ -218,7 +218,7 @@ def process_thread(board_config,thread_number):
             post_title = title_search.text
         else:
             post_title = None# Represents the post having no title
-        logging.debug("post_title: "+repr(post_title))
+        #logging.debug("post_title: "+repr(post_title))
 
         # Get poster email (If any)
         # u"<a class="email namepart" href="mailto:guyandsam@yahoo.com">"
@@ -228,16 +228,16 @@ def process_thread(board_config,thread_number):
             poster_email = poster_email_search.group(1)
         else:
             poster_email = None# Represents the post having no email address
-        logging.debug("poster_email: "+repr(poster_email))
+        #logging.debug("poster_email: "+repr(poster_email))
 
         # Get poster tripcode (if any)
         # <span class="trip">!2EpsHX3E3s</span>
         poster_tripcode_search = post_html_segment.find(["span"], ["trip"])
         if poster_tripcode_search:
-            poster_tripcode = poster_tripcode_search
+            poster_tripcode = poster_tripcode_search.text
         else:
             poster_tripcode = None# Represents the post having no email address
-        logging.debug("poster_tripcode: "+repr(poster_tripcode))
+        #logging.debug("poster_tripcode: "+repr(poster_tripcode))
 
 
         # Find post image(s) (if any)
@@ -256,13 +256,13 @@ def process_thread(board_config,thread_number):
                 absolute_image_link = board_config["relative_image_link_prefix"]+image_link
             else:# If we already have an absolute link
                 absolute_image_link = image_link
-            logging.debug("absolute_image_link: "+repr(absolute_image_link))
+            #logging.debug("absolute_image_link: "+repr(absolute_image_link))
             assert(absolute_image_link[0:4]==u"http")
 
             # Get server filename for image
             # ex. 1437401812560.jpg
             server_image_filename = absolute_image_link.split("/")[-1]
-            logging.debug("server_image_filename: "+repr(server_image_filename))
+            #logging.debug("server_image_filename: "+repr(server_image_filename))
             assert("/" not in server_image_filename)
             assert("." in server_image_filename)
 
@@ -270,7 +270,7 @@ def process_thread(board_config,thread_number):
             # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1440564930079.png">1440564930079.png</a> <span class="morefileinfo">(Spoiler Image, 389.27 KB, 800x560, <a class="post-filename" download="1stporn.png" href="/anon/src/1440564930079.png" title="Save as original filename">1stporn.png</a>)</span></p>
             # <span class="morefileinfo">(Spoiler Image,
             image_is_spoilered = ("""src="/static/spoiler.png""" in post_html_segment.prettify())
-            logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
+            #logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
 
             if image_is_spoilered:
                 absolute_thumbnail_link = None
@@ -283,13 +283,13 @@ def process_thread(board_config,thread_number):
                     absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
                 else:# If we already have an absolute link
                     absolute_thumbnail_link = thumbnail_link
-                logging.debug("absolute_thumbnail_link: "+repr(absolute_thumbnail_link))
+                #logging.debug("absolute_thumbnail_link: "+repr(absolute_thumbnail_link))
                 assert(absolute_thumbnail_link[0:4]==u"http")
 
                 # Get server filename for thumbnail
                 # ex. 1437401812560.jpg
                 server_thumbnail_filename = absolute_thumbnail_link.split("/")[-1]
-                logging.debug("server_thumbnail_filename: "+repr(server_thumbnail_filename))
+                #logging.debug("server_thumbnail_filename: "+repr(server_thumbnail_filename))
                 assert("/" not in server_thumbnail_filename)
                 assert("." in server_thumbnail_filename)
 
@@ -304,7 +304,7 @@ def process_thread(board_config,thread_number):
             # download="KDDT Flag.png"
             # download=["']([^"'<>]+)["']>
             original_image_filename = re.search("""download=["]([^"]+)["]""", post_image_segment_html, re.IGNORECASE).group(1)
-            logging.debug("original_image_filename: "+repr(original_image_filename))
+            #logging.debug("original_image_filename: "+repr(original_image_filename))
             assert("/" not in original_image_filename)
             assert("." in original_image_filename)
 
@@ -313,11 +313,11 @@ def process_thread(board_config,thread_number):
             filesize_and_dimensions_string = post_image_segment.find(["span"], ["morefileinfo"]).text
             # Find (reported) filesize of image
             reported_filesize = parse_filesize(filesize_and_dimensions_string)
-            logging.debug("reported_filesize: "+repr(reported_filesize))
+            #logging.debug("reported_filesize: "+repr(reported_filesize))
 
             # Find (reported) dimensions of image
             image_width, image_height = parse_dimensions(filesize_and_dimensions_string)
-            logging.debug("image_width: "+repr(image_width)+", image_height: "+repr(image_height))
+            #logging.debug("image_width: "+repr(image_width)+", image_height: "+repr(image_height))
 
             # Collect all data about image into once place for staging before DB stuff is done
             post_image = {#TODO
@@ -386,7 +386,7 @@ def parse_filesize(filesize_string):
         174704
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
-    logging.debug("filesize_string: "+repr(filesize_string))
+    #logging.debug("filesize_string: "+repr(filesize_string))
     # Extract the number and unit
     filesize_search = re.search("""(\d+(?:.\d+)?)\s+(\w?b),""", filesize_string, re.IGNORECASE)
     number_string = filesize_search.group(1)# u"170.61"
@@ -414,7 +414,7 @@ def parse_dimensions(dimensions_string):
         (926, 1205)
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
-    logging.debug("dimensions_string: "+repr(dimensions_string))
+    #logging.debug("dimensions_string: "+repr(dimensions_string))
     dimensions_search = re.search(""",\s?(\d+)x(\d+),""", dimensions_string, re.IGNORECASE)
     width = int(dimensions_search.group(1))
     height = int(dimensions_search.group(2))
@@ -432,9 +432,9 @@ def dummy_save_images(board_config,thread_dict):
     for thread_post in thread_posts:# Process images for each post
         post_images = thread_post["post_images"]
         for post_image in post_images:# Process each image for this post
-            logging.debug("thread_image: "+repr(thread_image))
-            absolute_image_link = thread_image["absolute_image_link"]
-            image_filename = thread_image["server_image_filename"]
+            logging.debug("post_image: "+repr(post_image))
+            absolute_image_link = post_image["absolute_image_link"]
+            image_filename = post_image["server_image_filename"]
             image_file_path = os.path.join("images", image_filename)
             # Load image
             image_data = get_url(absolute_image_link)
@@ -456,7 +456,7 @@ def dummy_save_images(board_config,thread_dict):
 
     logging.debug("thread_dict: "+repr(thread_dict))
     logging.debug("Finished saving images")
-    returnt thread_dict
+    return thread_dict
 
 
 
@@ -464,7 +464,7 @@ def dummy_save_thread(board_config,thread_dict):
     """Pretend to save the thread"""
     logging.debug("Saving thread...")
     json_to_save = json.dumps(thread_dict)
-    filename = str(thread_dict["thread_id"])+".json"
+    filename = str(thread_dict["thread_number"])+".json"
     save_file(
     	file_path=os.path.join("debug", "json_threads", filename),
     	data=json_to_save,
@@ -500,7 +500,8 @@ def bah():
 
 def debug():
     """where stuff is called to debug and test"""
-    session = sql_functions.connect_to_db()
+    #session = sql_functions.connect_to_db()
+    #session = None#dummy
     board_config_anon = {
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
@@ -517,14 +518,14 @@ def debug():
         }
 
     process_thread(
-        session=session,
+        #session=session,
         board_config=board_config_arch,
-        thread_id=2517907
+        thread_number=2517907
         )
     return
 
     process_catalog(
-        session=session,
+        #session=session,
         board_config = board_config
         )
 

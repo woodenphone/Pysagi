@@ -159,14 +159,14 @@ def insert_thread(session,board_config,thread_dict):
         # Find what posts we have from this thread we have in the DB
         existing_posts_query = sqlalchemy.select([Posts]).\
             where(Posts.thread_id == thread_id)
-        existing_posts_rows = session.execute(existing_posts_query)
+        existing_posts_rows = session.execute(existing_posts_query)\
+
 
 
         for post_dict in thread_dict["posts"]:
             # Check if post is in DB
+            pass#TODO
 
-            if existing_post_row is None:
-                # Post is not in the DB
 
 
 
