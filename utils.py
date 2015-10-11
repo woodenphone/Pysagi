@@ -194,7 +194,7 @@ def getwithinfo(url):
     attemptcount = 0
     max_attempts = 10
     retry_delay = 10
-    request_delay = 0.5#avoid hammering the site too hard
+    request_delay = 0.0
     assert_is_string(url)
     deescaped_url = deescape(url)
     url_with_protocol = add_http(deescaped_url)

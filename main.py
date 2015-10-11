@@ -89,12 +89,13 @@ def read_catalog(board_config):
     if catalog_html is None:
     	logging.error("Could not load catalog: "+repr(catalog_url))
     	return
-    logging.debug("catalog_html: "+repr(catalog_html))
+    #logging.debug("catalog_html: "+repr(catalog_html))
     save_file(
     	file_path=os.path.join("debug","catalog.html"),
     	data=catalog_html,
     	force_save=True,
     	allow_fail=False)
+    logging.info("Loaded catalog")
 
     # Seperate thread entries from the page HTML so we can process them seperately
     # http://stackoverflow.com/questions/5041008/handling-class-attribute-in-beautifulsoup
@@ -106,19 +107,19 @@ def read_catalog(board_config):
     thread_position_on_page = 0# First thread on the page is thread 1
     for thread_html_segment in thread_html_segments:
         thread_position_on_page += 1
-        logging.debug("thread_html_segment: "+repr(thread_html_segment))
+        #logging.debug("thread_html_segment: "+repr(thread_html_segment))
 
         # Get thread number
         catalink = thread_html_segment.find(["div","a"], ["catalink"])
         relative_link = catalink.attrs[u"href"]
         thread_number = int(re.search("""res/(\d+)""", relative_link, re.IGNORECASE).group(1))# ex. 532843
-        logging.debug("thread_number: "+repr(thread_number))
+        #logging.debug("thread_number: "+repr(thread_number))
 
         # Get reply count for thread
         catacount = thread_html_segment.find("div", ["catacount"])
         catacount_text = catacount.get_text()
         reply_count = int(''.join(c for c in catacount_text if c.isdigit()))# ex. 12
-        logging.debug("reply_count: "+repr(reply_count))
+        #logging.debug("reply_count: "+repr(reply_count))
 
         # Store data about this thread for processing
         current_catalog_threads[thread_number] = {# TODO
@@ -182,6 +183,7 @@ def process_thread(board_config,thread_number):
     	data=thread_html,
     	force_save=True,
     	allow_fail=False)
+    logging.info("Loaded thread: "+repr(thread_number))
 
     # Seperate posts out
     # Seperate post entries from the page HTML so we can process them seperately
@@ -207,20 +209,21 @@ def process_thread(board_config,thread_number):
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
+        post_html_segment_html = post_html_segment.prettify()
         #logging.debug("post_html_segment: "+repr(post_html_segment))
 
         # Is post OP? (First in thread)
         # <div class="post op post_532843 post_anon-532843" id="reply_532843">
         # <div class="post op mature_post post_535762 post_anon-535762" id="reply_535762">
         post_is_op = (
-            ("post op post_" in post_html_segment.prettify()) or
-            ("post op mature_post post_" in post_html_segment.prettify())
+            ("post op post_" in post_html_segment_html) or
+            ("post op mature_post post_" in post_html_segment_html)
             )
         # If post is not OP, it should be reply, so break if it isn't
         # <div class="post reply post_532905 post_anon-532905" data-thread="532843" id="reply_532905">
         post_is_reply = (
-            ("post reply post_" in post_html_segment.prettify()) or
-            ("post reply mature_post post_" in post_html_segment.prettify())
+            ("post reply post_" in post_html_segment_html) or
+            ("post reply mature_post post_" in post_html_segment_html)
             )
         post_was_op_xor_reply = (post_is_op != post_is_reply)
         if not post_was_op_xor_reply:
@@ -239,7 +242,7 @@ def process_thread(board_config,thread_number):
         # u"<time datetime="2013-02-16T15:51:39Z">"
         # <time\sdatetime="([\w:-]+)">
         # u"2013-02-16T15:51:39Z"
-        post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", post_html_segment.prettify(), re.IGNORECASE).group(1)
+        post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", post_html_segment_html, re.IGNORECASE).group(1)
         post_time = parse_ponychan_datetime(post_time_string)
         #logging.debug("post_time: "+repr(post_time))
 
@@ -262,7 +265,7 @@ def process_thread(board_config,thread_number):
         # Get poster email (If any)
         # u"<a class="email namepart" href="mailto:guyandsam@yahoo.com">"
         # <a\s*class="email\s*namepart"\s*href="mailto:([^"]+)">
-        poster_email_search = re.search("""<a\s*class="email\s*namepart"\s*href="mailto:([^"]+)">""", post_html_segment.prettify(), re.IGNORECASE)
+        poster_email_search = re.search("""<a\s*class="email\s*namepart"\s*href="mailto:([^"]+)">""", post_html_segment_html, re.IGNORECASE)
         if poster_email_search:
             poster_email = poster_email_search.group(1)
         else:
@@ -286,17 +289,19 @@ def process_thread(board_config,thread_number):
         image_position = 0
         for post_image_segment in post_image_segments:# Iterate through BeautifulSoup results
             image_position += 1
-            post_image_segment_html = post_image_segment.prettify()
             #logging.debug("post_image_segment: "+repr(post_image_segment))
+            post_image_segment_html = post_image_segment.prettify()
+            #logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
+
 
             # Find location of image file
             # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
             image_link = re.search("""href=["']([^"'<>"]+/src/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
             if image_link[0] == u"/":# Convert relative links to absolute
-                logging.info("Given relavtive link: "+repr(image_link))
+                #logging.info("Given relavtive link: "+repr(image_link))
                 absolute_image_link = board_config["relative_image_link_prefix"]+image_link
             else:# If we already have an absolute link
-                logging.info("Given absolute link: "+repr(image_link))
+                #logging.info("Given absolute link: "+repr(image_link))
                 absolute_image_link = image_link
             #logging.debug("absolute_image_link: "+repr(absolute_image_link))
             assert(absolute_image_link[0:4]==u"http")
@@ -311,7 +316,7 @@ def process_thread(board_config,thread_number):
             # Find out if the image is spoilered
             # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1440564930079.png">1440564930079.png</a> <span class="morefileinfo">(Spoiler Image, 389.27 KB, 800x560, <a class="post-filename" download="1stporn.png" href="/anon/src/1440564930079.png" title="Save as original filename">1stporn.png</a>)</span></p>
             # <span class="morefileinfo">(Spoiler Image,
-            image_is_spoilered = ("""src="/static/spoiler.png""" in post_html_segment.prettify())
+            image_is_spoilered = ("""src="/static/spoiler.png""" in post_html_segment_html)
             #logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
 
             if image_is_spoilered:
@@ -323,7 +328,7 @@ def process_thread(board_config,thread_number):
             else:# if not spoilered, grab the thumbnail stuff
                 # Get thumbnail location
                 # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
-                thumbnail_link = re.search("""src=["']([^"'<>"]+/thumb/[^"'<>"]+)["']""", post_html_segment.prettify(), re.IGNORECASE).group(1)
+                thumbnail_link = re.search("""src=["']([^"'<>"]+/thumb/[^"'<>"]+)["']""", post_html_segment_html, re.IGNORECASE).group(1)
                 if thumbnail_link[0] == u"/":# Convert relative links to absolute
                     absolute_thumbnail_link = board_config["relative_thumbnail_link_prefix"]+thumbnail_link
                 else:# If we already have an absolute link
@@ -343,7 +348,7 @@ def process_thread(board_config,thread_number):
                 # style="width:125px;height:103px"
                 # style=['"]width:(\d+)px;height:(\d+)px['"]
                 # 125, 103
-                thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", post_html_segment.prettify(), re.IGNORECASE)
+                thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", post_html_segment_html, re.IGNORECASE)
                 thumbnail_width = thumbnail_size_search.group(1)
                 thumbnail_height = thumbnail_size_search.group(1)
 
@@ -358,10 +363,21 @@ def process_thread(board_config,thread_number):
             # <a class="post-filename" title="Save as original filename" href="/anon/src/1441401127342.png" download="KDDT Flag.png">KDDT Flag.png</a>
             # download="KDDT Flag.png"
             # download=["']([^"'<>]+)["']>
-            original_image_filename = re.search("""download=["]([^"]+)["]""", post_image_segment_html, re.IGNORECASE).group(1)
+            original_image_filename_search = re.search("""download=["]([^"]+)["]""", post_image_segment_html, re.IGNORECASE)
+            if original_image_filename_search:
+                original_image_filename = original_image_filename_search.group(1)
+                assert("/" not in original_image_filename)
+            elif board_config["shortname"] == "arch":
+                # Some threads in /arch/ don't work, so we just skip the original filename for those since they look like they don't have that
+                # post_image_segment_html: u'<p class="fileinfo">\n File:\n <a href="https://ml.ponychan.net/arch/src/mtr_1377068331997.jpg">\n  mtr_1377068331997.jpg\n </a>\n <span class="morefileinfo">\n  (73.54 KB, 680x738)\n </span>\n</p>\n'
+                original_image_filename = None
+            else:
+                # Stop if we didn't expect this special case
+                logging.error("Could not grab original filename!")
+                logging.debug("locals: "+repr(locals()))
+                assert(False)
             #logging.debug("original_image_filename: "+repr(original_image_filename))
-            assert("/" not in original_image_filename)
-            #assert("." in original_image_filename)
+
 
             # Generate filename and ext for futabilly
             futabilly_filename_split_search = re.search("""(.+).(.+?)""", post_image_segment_html, re.IGNORECASE)
@@ -522,12 +538,13 @@ def parse_dimensions(dimensions_string):
     Convert *chan style dimensions strings into integers for height and width
     input:
         u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
+        u'\n  (73.54 KB, 680x738)\n </span>\n'
     output:
         (926, 1205)
     https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
     """
     #logging.debug("dimensions_string: "+repr(dimensions_string))
-    dimensions_search = re.search(""",\s?(\d+)x(\d+),""", dimensions_string, re.IGNORECASE)
+    dimensions_search = re.search(""",\s?(\d+)x(\d+)""", dimensions_string, re.IGNORECASE)
     width = int(dimensions_search.group(1))
     height = int(dimensions_search.group(2))
     assert(width > 0)
@@ -544,7 +561,7 @@ def futabilly_save_thread(board_config,thread_number,thread_dict):
     json_to_save = json.dumps(thread_dict)
     filename = str(thread_number)+".json"
     save_file(
-    	file_path=os.path.join("debug", "futabilly", filename),
+    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
@@ -557,9 +574,9 @@ def futabilly_save_catalog(board_config,catalog_dict):
     """Output JSON for futabilly"""
     logging.debug("Saving futabilly catalog...")
     json_to_save = json.dumps(catalog_dict)
-    filename = str(catalog_dict["threads"])+".json"
+    filename = "catalog.json"
     save_file(
-    	file_path=os.path.join("debug", "futabilly", filename),
+    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
@@ -654,7 +671,7 @@ def debug():
     """where stuff is called to debug and test"""
     #session = sql_functions.connect_to_db()
     #session = None#dummy
-    explore_json()
+    #explore_json()
     board_config_anon = {
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
@@ -662,6 +679,7 @@ def debug():
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
         "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
+        "shortname":"anon"
         }
     board_config_arch = {
         "catalog_page_url":"https://www.ponychan.net/arch/catalog.html",# Absolute URL to access catalog page
@@ -670,21 +688,25 @@ def debug():
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
         "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
+        "shortname":"arch"
         }
 
-    process_thread(
-        #session=session,
-        board_config=board_config_arch,
-        thread_number=2517907
-        )
-    #return
+##    process_thread(
+##        #session=session,
+##        board_config=board_config_arch,
+##        thread_number=2517907
+##        )
+##    process_thread(
+##        #session=session,
+##        board_config=board_config_arch,
+##        thread_number=19588
+##        )
+##    return
 
     process_catalog(
-        #session=session,
         board_config = board_config_anon
         )
     process_catalog(
-        #session=session,
         board_config = board_config_arch
         )
     return
