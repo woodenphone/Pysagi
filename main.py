@@ -21,13 +21,24 @@ import tables# Database table definitions
 
 
 
-
+def run(board_config):
+    """Run continually for a board"""
+    catalog = {}
+    counter = 0
+    while True:
+        counter += 1
+        catalog = process_catalog(
+            board_config,
+            old_catalog=catalog
+            )
+        continue
 
 
 
 def process_catalog(board_config,old_catalog={}):
     """Scan catalog, decide what looks new, and update those threads.
     Takes the previous output of the function as input to remember what threads it's looked at"""
+    #
     # Read catalog page
     new_catalog = read_catalog(board_config)
 
@@ -45,7 +56,26 @@ def process_catalog(board_config,old_catalog={}):
     # Run updates
     for thread_to_update in threads_to_update:
         process_thread(board_config, thread_to_update)
+        # Update date of last update to now
+        new_catalog[thread_to_update]["last_updated"] = get_current_unix_time_8chan()
+        continue
+    # Update futabilly catalog JSON
+    futabilly_save_catalog(
+        board_config=board_config,
+        catalog_dict=new_catalog
+        )
     return new_catalog
+
+
+def merge_catalogs(old_catalog,new_catalog):
+    merged_catalog = {}
+    for new_catalog_thread_key in new_catalog.keys():
+        new_catalog_thread = old_catalog[new_catalog_thread_key]
+        if new_catalog_thread_key not in old_catalog.keys():
+            # This thread is new
+            pass
+
+
 
 
 
@@ -94,6 +124,7 @@ def read_catalog(board_config):
             "reply_count":reply_count,# How many replies were we told the thread has?
             "thread_position_on_page":thread_position_on_page,# Where is the thread on the page, starting at 1
             "thread_number":thread_number,# Server side id for the thread
+            "last_updated":None
             }
         continue
     logging.debug("current_catalog_threads: "+repr(current_catalog_threads))
@@ -103,6 +134,7 @@ def read_catalog(board_config):
 def compare_catalog_threads(board_config,old_catalog,new_catalog):
     """compare new vs old catalog results and decide if updates are needed"""
     threads_to_update = []
+    number_of_catalog_threads = len(new_catalog.keys())
     # Compare new catalog data to previous catalog data
     for thread_number in new_catalog.keys():
         current_catalog_thread = new_catalog[thread_number]
@@ -110,21 +142,26 @@ def compare_catalog_threads(board_config,old_catalog,new_catalog):
 
         # Was this in previous catalog?
         if thread_number not in old_catalog.keys():
-            logging.debug("Thread was not in previous catalog, processing. "+repr(thread_number))
+            logging.debug("Thread was not in previous catalog, triggering update. "+repr(thread_number))
             threads_to_update += [thread_number]
             continue
 
         # Compare the reply count
         elif current_catalog_thread["reply_count"] != old_catalog[thread_number]["reply_count"]:
-            logging.debug("Thread has more replies than previous catalog, processing. "+repr(thread_number))
+            logging.debug("Thread has more replies than previous catalog, triggering update. "+repr(thread_number))
             threads_to_update += [thread_number]
             continue
 
         # Compare the thread position in the catalog
-        #if thread_position_on_page
-        # up
-        logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
-        continue
+        elif thread_position_on_page > number_of_catalog_threads - 10:
+            # The thread is in the last 10 threads
+            logging.debug("Thread is in the last ten threads on the catalog, triggering update. "+repr(thread_number))
+            threads_to_update += [thread_number]
+            continue
+        # No check triggered update, no update needed
+        else:
+            logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
+            continue
     return threads_to_update
 
 
@@ -165,10 +202,11 @@ def process_thread(board_config,thread_number):
 
     # Process posts
     thread_posts = []# Staging for post data before we feed it into the DB
+    futabilly_thread_posts = []# Staging for post data before we feed it into the DB
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
-        logging.debug("post_html_segment: "+repr(post_html_segment))
+        #logging.debug("post_html_segment: "+repr(post_html_segment))
 
         # Is post OP? (First in thread)
         # <div class="post op post_532843 post_anon-532843" id="reply_532843">
@@ -243,6 +281,7 @@ def process_thread(board_config,thread_number):
         # Find post image(s) (if any)
         post_image_segments = post_html_segment.findAll("p", ["fileinfo"])
         post_images = []# Staging for image data before we feed it into the post entry
+        futabilly_post_images = []# Staging for image data before we feed it into the post entry
         image_position = 0
         for post_image_segment in post_image_segments:# Iterate through BeautifulSoup results
             image_position += 1
@@ -253,8 +292,10 @@ def process_thread(board_config,thread_number):
             # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
             image_link = re.search("""href=["']([^"'<>"]+/src/[^"'<>"]+)["']>""", post_image_segment_html, re.IGNORECASE).group(1)
             if image_link[0] == u"/":# Convert relative links to absolute
+                logging.info("Given relavtive link: "+repr(image_link))
                 absolute_image_link = board_config["relative_image_link_prefix"]+image_link
             else:# If we already have an absolute link
+                logging.info("Given absolute link: "+repr(image_link))
                 absolute_image_link = image_link
             #logging.debug("absolute_image_link: "+repr(absolute_image_link))
             assert(absolute_image_link[0:4]==u"http")
@@ -308,6 +349,13 @@ def process_thread(board_config,thread_number):
             assert("/" not in original_image_filename)
             assert("." in original_image_filename)
 
+            # Generate filename and ext for futabilly
+            futabilly_filename_split_search = re.search("""(.+).(.+?)""", post_image_segment_html, re.IGNORECASE)
+            futabilly_filename = futabilly_filename_split_search.group(1)
+            futabilly_ext = futabilly_filename_split_search.group(2)
+            assert("." not in futabilly_ext)
+
+
             # Grab filesize and dimensions of fullsize image
             # u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
             filesize_and_dimensions_string = post_image_segment.find(["span"], ["morefileinfo"]).text
@@ -335,8 +383,23 @@ def process_thread(board_config,thread_number):
                 "local_filename":None,# Set elsewhere
                 "NONE":None,# TODO
                 }
-            logging.debug("post_image: "+repr(post_image))
+            #logging.debug("post_image: "+repr(post_image))
             post_images += [post_image]
+
+            futabilly_post_image = {# 8chan style for odillitime's futabilly.
+                "absolute_image_link":absolute_image_link,# Full URL to access image on server
+                "ext":futabilly_ext,# Extention of image. u'ext': u'.jpg',
+                "filename":futabilly_filename,# Server filename without extention. u'filename': u'12',
+                "fsize":reported_filesize,# Size of file in bytes. u'fsize': 505901,
+                "h":image_height,# Height of image. u'h': 1209,
+                #"md5":None,# MD5 of image, encoded in base64. u'md5': u'KDiHU3cHcwCPlIyTdROpmQ==',
+                "tim":None,# OdiliTime> tim: is the timestamp in ms (usually matches the media filename)# u'tim': u'1444463324099-1',
+                "tn_h":None,# Height of thumbnail. u'tn_h': 255,
+                "tn_w":None,# Width of thumbnail. u'tn_w': 187,
+                "w":image_width,# Width of image. u'w': 887},
+                }
+            futabilly_post_images += [futabilly_post_image]
+
             continue
 
         # Collect all data about post into once place for staging before DB stuff is done
@@ -352,11 +415,30 @@ def process_thread(board_config,thread_number):
             "post_title":post_title,# The post title if it exists, else None object
             "poster_email":poster_email,# The email address given by the poster (If any), otherwise None
             "poster_tripcode":poster_tripcode,# tripcode of the post if there is one, otherwise None
-            "NONE":None,# TODO
+            #"NONE":None,# TODO
             }
-        logging.debug("thread_post: "+repr(thread_post))
+        #logging.debug("thread_post: "+repr(thread_post))
         thread_posts += [thread_post]
+
+        futabilly_thread_post = {# 8chan style for odillitime's futabilly
+            "com":post_text,# OdiliTime> com: is the comment
+            #"cyclical":None,# TODO
+            #"id":None,# TODO
+            #"last_modified":None,# TODO
+            #"locked":None,# TODO
+            "name":post_name,# TODO
+            "no":None,# OdiliTime> no: is the post number
+            #"resto":None,# TODO
+            #"sticky":None,# TODO
+            "time":None,# OdiliTime> time: time of post
+            "email":poster_email,# u'email': u'sage',
+            "trip":poster_tripcode,#
+            "sub":post_title,#
+            }
+        futabilly_thread_posts += [futabilly_thread_post]
+
         continue
+
     logging.debug("thread_posts: "+repr(thread_posts))
 
     # Collect all the information about the thread into one place for staging
@@ -369,10 +451,21 @@ def process_thread(board_config,thread_number):
         "NONE":None,# TODO
         }
 
+    futabilly_thread_dict = {# 8chan style for odillitime's futabilly
+        "posts":futabilly_thread_posts,# TODO
+        }
+
+    # Update futabilly thread JSON
+    futabilly_save_thread(
+        board_config=board_config,
+        thread_number=thread_number,
+        thread_dict=futabilly_thread_dict
+        )
+    return
+
     dummy_save_thread(board_config,thread_dict)
     # Insert / update thread in DB
     #TODO
-
     return
 
 
@@ -423,6 +516,40 @@ def parse_dimensions(dimensions_string):
     return (width, height)
 
 
+
+
+
+def futabilly_save_thread(board_config,thread_number,thread_dict):
+    logging.debug("Saving thread...")
+    json_to_save = json.dumps(thread_dict)
+    filename = str(thread_number)+".json"
+    save_file(
+    	file_path=os.path.join("debug", "futabilly", filename),
+    	data=json_to_save,
+    	force_save=True,
+    	allow_fail=False
+        )
+    #dummy_save_images(board_config,thread_dict)
+    logging.debug("Finished saving thread")
+    return
+
+
+def futabilly_save_catalog(board_config,catalog_dict):
+    logging.debug("Saving catalog...")
+    json_to_save = json.dumps(catalog_dict)
+    filename = str(thread_dict["threads"])+".json"
+    save_file(
+    	file_path=os.path.join("debug", "futabilly", filename),
+    	data=json_to_save,
+    	force_save=True,
+    	allow_fail=False
+        )
+    #dummy_save_images(board_config,thread_dict)
+    logging.debug("Finished saving thread")
+    return
+
+
+
 def dummy_save_images(board_config,thread_dict):
     """Pretend to save images"""
     logging.debug("Saving images...")
@@ -471,7 +598,7 @@ def dummy_save_thread(board_config,thread_dict):
     	force_save=True,
     	allow_fail=False
         )
-    dummy_save_images(board_config,thread_dict)
+    #dummy_save_images(board_config,thread_dict)
     logging.debug("Finished saving thread")
     return
 
@@ -497,11 +624,18 @@ def bah():
             logging.error("Could not load page: "+repr(page_url))
             return
 
+def explore_json():
+    """Debug"""
+    json_data = read_file(os.path.join("notes","6404920.json"))
+    json_obj = json.loads(json_data)
+    logging.debug("json_obj: "+repr(json_obj))
+    return
 
 def debug():
     """where stuff is called to debug and test"""
     #session = sql_functions.connect_to_db()
     #session = None#dummy
+    explore_json()
     board_config_anon = {
         "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
         "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
@@ -522,12 +656,17 @@ def debug():
         board_config=board_config_arch,
         thread_number=2517907
         )
-    return
+    #return
 
     process_catalog(
         #session=session,
-        board_config = board_config
+        board_config = board_config_anon
         )
+    process_catalog(
+        #session=session,
+        board_config = board_config_arch
+        )
+    return
 
 
 def main():

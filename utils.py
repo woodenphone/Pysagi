@@ -375,12 +375,20 @@ def delay(basetime,upperrandom=0):
 
 
 def get_current_unix_time():
-    """Return the current unix time as an integer"""
+    """Return the current unix time as an integer
+    ex. 1444545370030L"""
     # https://timanovsky.wordpress.com/2009/04/09/get-unix-timestamp-in-java-python-erlang/
     current_time = time.time()
     timestamp = int(current_time *1000)
     return timestamp
 
+def get_current_unix_time_8chan():
+    """Return the current unix time as an integer
+    ex. 1444545553"""
+    # https://timanovsky.wordpress.com/2009/04/09/get-unix-timestamp-in-java-python-erlang/
+    current_time = time.time()
+    timestamp = int(current_time)
+    return timestamp
 
 
 def merge_dicts(*dict_args):
@@ -721,12 +729,12 @@ def parse_ponychan_datetime(time_string):
     output:
         bar
     """
-    logging.debug("time_string: "+repr(time_string))
+    #logging.debug("time_string: "+repr(time_string))
     # "2013-02-16T15:51:39Z"
     # "%Y-%m-%dT%H:%M:%SZ"
     post_time = time.strptime(time_string, "%Y-%m-%dT%H:%M:%SZ")
     post_unix_time = calendar.timegm(post_time)
-    logging.debug("post_unix_time: "+repr(post_unix_time))
+    #logging.debug("post_unix_time: "+repr(post_unix_time))
     return post_unix_time
 
 
