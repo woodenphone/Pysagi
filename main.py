@@ -31,6 +31,7 @@ def run(board_config):
             board_config,
             old_catalog=catalog
             )
+        delay(board_config["rescan_delay"])
         continue
 
 
@@ -227,7 +228,7 @@ def process_thread(board_config,thread_number):
             logging.debug("locals: "+repr(locals()))
             assert(False)
         if postition_in_thread == 1:
-            assert(post_is_op)
+            assert(post_is_op)# If the post is the first one in the thread but not the OP, something is probably going wrong.
 
         # Get post number
         # <a class="post_no citelink" href="/anon/res/538340.html#541018">541018</a>
@@ -286,7 +287,7 @@ def process_thread(board_config,thread_number):
         for post_image_segment in post_image_segments:# Iterate through BeautifulSoup results
             image_position += 1
             post_image_segment_html = post_image_segment.prettify()
-            logging.debug("post_image_segment: "+repr(post_image_segment))
+            #logging.debug("post_image_segment: "+repr(post_image_segment))
 
             # Find location of image file
             # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
@@ -314,8 +315,11 @@ def process_thread(board_config,thread_number):
             #logging.debug("image_is_spoilered: "+repr(image_is_spoilered))
 
             if image_is_spoilered:
+                # No thumbnail, set the vales for thumbnail stuff to None
                 absolute_thumbnail_link = None
                 server_thumbnail_filename = None
+                thumbnail_width = None
+                thumbnail_height = None
             else:# if not spoilered, grab the thumbnail stuff
                 # Get thumbnail location
                 # ex. https://www.ponychan.net/anon/thumb/1441401127342.png
@@ -334,6 +338,16 @@ def process_thread(board_config,thread_number):
                 assert("/" not in server_thumbnail_filename)
                 assert("." in server_thumbnail_filename)
 
+                # Get thumbnail dimensions
+                # <img class="postimg" src="/anon/thumb/1435952100014.png" style="width:125px;height:103px" alt="">
+                # style="width:125px;height:103px"
+                # style=['"]width:(\d+)px;height:(\d+)px['"]
+                # 125, 103
+                thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", post_html_segment.prettify(), re.IGNORECASE)
+                thumbnail_width = thumbnail_size_search.group(1)
+                thumbnail_height = thumbnail_size_search.group(1)
+
+
             # Find original filename
             # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1437401812560.jpg">1437401812560.jpg</a> <span class="morefileinfo">(170.61 KB, 926x1205, <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>)</span></p>
             # <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>
@@ -347,13 +361,15 @@ def process_thread(board_config,thread_number):
             original_image_filename = re.search("""download=["]([^"]+)["]""", post_image_segment_html, re.IGNORECASE).group(1)
             #logging.debug("original_image_filename: "+repr(original_image_filename))
             assert("/" not in original_image_filename)
-            assert("." in original_image_filename)
+            #assert("." in original_image_filename)
 
             # Generate filename and ext for futabilly
             futabilly_filename_split_search = re.search("""(.+).(.+?)""", post_image_segment_html, re.IGNORECASE)
             futabilly_filename = futabilly_filename_split_search.group(1)
-            futabilly_ext = futabilly_filename_split_search.group(2)
-            assert("." not in futabilly_ext)
+            image_extention = futabilly_filename_split_search.group(2)
+            assert("." not in image_extention)
+            assert("/" not in image_extention)
+            assert("\\" not in image_extention)
 
 
             # Grab filesize and dimensions of fullsize image
@@ -381,21 +397,24 @@ def process_thread(board_config,thread_number):
                 "image_height":image_height,# Reported height of full image
                 "is_op_thumb":None,# Is the thumbnail an OP thumbnail (larger)
                 "local_filename":None,# Set elsewhere
-                "NONE":None,# TODO
+                "thumbnail_width":thumbnail_width,# Width of the thumbnail, if it exists
+                "thumbnail_height":thumbnail_height,# Height of the thumbnail, if it exists
+                "image_extention":image_extention,# Filename after the last "."
+                "futabilly_filename":None,# Filename up to the last "."
                 }
             #logging.debug("post_image: "+repr(post_image))
             post_images += [post_image]
 
             futabilly_post_image = {# 8chan style for odillitime's futabilly.
                 "absolute_image_link":absolute_image_link,# Full URL to access image on server
-                "ext":futabilly_ext,# Extention of image. u'ext': u'.jpg',
+                "ext":image_extention,# Extention of image. u'ext': u'.jpg',
                 "filename":futabilly_filename,# Server filename without extention. u'filename': u'12',
                 "fsize":reported_filesize,# Size of file in bytes. u'fsize': 505901,
                 "h":image_height,# Height of image. u'h': 1209,
                 #"md5":None,# MD5 of image, encoded in base64. u'md5': u'KDiHU3cHcwCPlIyTdROpmQ==',
                 "tim":None,# OdiliTime> tim: is the timestamp in ms (usually matches the media filename)# u'tim': u'1444463324099-1',
-                "tn_h":None,# Height of thumbnail. u'tn_h': 255,
-                "tn_w":None,# Width of thumbnail. u'tn_w': 187,
+                "tn_h":thumbnail_height,# Height of thumbnail. u'tn_h': 255,
+                "tn_w":thumbnail_width,# Width of thumbnail. u'tn_w': 187,
                 "w":image_width,# Width of image. u'w': 887},
                 }
             futabilly_post_images += [futabilly_post_image]
@@ -427,13 +446,13 @@ def process_thread(board_config,thread_number):
             #"last_modified":None,# TODO
             #"locked":None,# TODO
             "name":post_name,# TODO
-            "no":None,# OdiliTime> no: is the post number
-            #"resto":None,# TODO
+            "no":post_number,# OdiliTime> no: is the post number
+            "resto":thread_number,# looks to be the thread number
             #"sticky":None,# TODO
-            "time":None,# OdiliTime> time: time of post
+            "time":post_time,# OdiliTime> time: time of post
             "email":poster_email,# u'email': u'sage',
-            "trip":poster_tripcode,#
-            "sub":post_title,#
+            "trip":poster_tripcode,# Tripcode
+            "sub":post_title,# Title / subject
             }
         futabilly_thread_posts += [futabilly_thread_post]
 
@@ -520,7 +539,8 @@ def parse_dimensions(dimensions_string):
 
 
 def futabilly_save_thread(board_config,thread_number,thread_dict):
-    logging.debug("Saving thread...")
+    """Output JSON for futabilly"""
+    logging.debug("Saving futabilly thread...")
     json_to_save = json.dumps(thread_dict)
     filename = str(thread_number)+".json"
     save_file(
@@ -529,13 +549,13 @@ def futabilly_save_thread(board_config,thread_number,thread_dict):
     	force_save=True,
     	allow_fail=False
         )
-    #dummy_save_images(board_config,thread_dict)
     logging.debug("Finished saving thread")
     return
 
 
 def futabilly_save_catalog(board_config,catalog_dict):
-    logging.debug("Saving catalog...")
+    """Output JSON for futabilly"""
+    logging.debug("Saving futabilly catalog...")
     json_to_save = json.dumps(catalog_dict)
     filename = str(thread_dict["threads"])+".json"
     save_file(
@@ -544,7 +564,6 @@ def futabilly_save_catalog(board_config,catalog_dict):
     	force_save=True,
     	allow_fail=False
         )
-    #dummy_save_images(board_config,thread_dict)
     logging.debug("Finished saving thread")
     return
 
@@ -642,6 +661,7 @@ def debug():
         "thread_url_suffix":".html",# The thread url after the thread number
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
+        "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
         }
     board_config_arch = {
         "catalog_page_url":"https://www.ponychan.net/arch/catalog.html",# Absolute URL to access catalog page
@@ -649,6 +669,7 @@ def debug():
         "thread_url_suffix":".html",# The thread url after the thread number
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
+        "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
         }
 
     process_thread(
