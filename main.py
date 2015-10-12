@@ -575,7 +575,7 @@ def futabilly_save_catalog(board_config,catalog_dict):
     logging.debug("Saving futabilly catalog...")
     futabilly_catalog = futabilly_format_catalog(board_config,catalog_dict)
     json_to_save = json.dumps(futabilly_catalog)
-    filename = "catalog.json"
+    filename = "threads.json"
     save_file(
     	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
     	data=json_to_save,
