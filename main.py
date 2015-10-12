@@ -177,26 +177,25 @@ def process_thread(board_config,thread_number):
     if thread_html is None:
     	logging.error("Could not load thread: "+repr(thread_url))
     	return
-    #logging.debug("thread_html: "+repr(thread_html))
+    logging.debug("thread_html: "+repr(thread_html))
     save_file(
     	file_path=os.path.join("debug","thread.html"),
     	data=thread_html,
     	force_save=True,
     	allow_fail=False)
-    logging.info("Loaded thread: "+repr(thread_number))
+    #logging.info("Loaded thread: "+repr(thread_number))
 
     # Seperate posts out
     # Seperate post entries from the page HTML so we can process them seperately
     # http://stackoverflow.com/questions/5041008/handling-class-attribute-in-beautifulsoup
-    soup = BeautifulSoup(thread_html, "html.parser")
-    post_html_segments = soup.findAll("div", ["postContainer"])
+    soup = BeautifulSoup(thread_html, "html5lib")# "lxml" and "html.parser" both fail on at least one /arch/ post
+    post_html_segments = soup.findAll("div", ["postContainer","replyContainer"])
     #logging.debug("post_html_segments: "+repr(post_html_segments))
 
     # Detect if thread is currently stickied
     # <img class="icon" title="Sticky" src="/static/sticky.gif" alt="Sticky">
     thread_is_sticky = ("""src="/static/sticky.gif""" in thread_html)#TODO
     #logging.debug("thread_is_sticky: "+repr(thread_is_sticky))
-
 
     # Detect if thread is currently locked
     # <img class="icon" title="Locked" src="/static/locked.gif" alt="Locked">
@@ -209,8 +208,9 @@ def process_thread(board_config,thread_number):
     postition_in_thread = 0
     for post_html_segment in post_html_segments:
         postition_in_thread += 1
-        post_html_segment_html = post_html_segment.prettify()
         #logging.debug("post_html_segment: "+repr(post_html_segment))
+        post_html_segment_html = post_html_segment.prettify()# So we only have to call prettify() once
+        #logging.debug("post_html_segment_html: "+repr(post_html_segment_html))
 
         # Is post OP? (First in thread)
         # <div class="post op post_532843 post_anon-532843" id="reply_532843">
@@ -290,7 +290,7 @@ def process_thread(board_config,thread_number):
         for post_image_segment in post_image_segments:# Iterate through BeautifulSoup results
             image_position += 1
             #logging.debug("post_image_segment: "+repr(post_image_segment))
-            post_image_segment_html = post_image_segment.prettify()
+            post_image_segment_html = post_image_segment.prettify()# So we only have to call prettify() once
             #logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
 
 
@@ -474,7 +474,7 @@ def process_thread(board_config,thread_number):
 
         continue
 
-    logging.debug("thread_posts: "+repr(thread_posts))
+    #logging.debug("thread_posts: "+repr(thread_posts))
 
     # Collect all the information about the thread into one place for staging
     thread_dict = {
@@ -573,7 +573,8 @@ def futabilly_save_thread(board_config,thread_number,thread_dict):
 def futabilly_save_catalog(board_config,catalog_dict):
     """Output JSON for futabilly"""
     logging.debug("Saving futabilly catalog...")
-    json_to_save = json.dumps(catalog_dict)
+    futabilly_catalog = futabilly_format_catalog(board_config,catalog_dict)
+    json_to_save = json.dumps(futabilly_catalog)
     filename = "catalog.json"
     save_file(
     	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
@@ -584,6 +585,25 @@ def futabilly_save_catalog(board_config,catalog_dict):
     logging.debug("Finished saving thread")
     return
 
+
+def futabilly_format_catalog(board_config,catalog_dict):
+    """Convert internal catalog format to 8chan style format futabilly likes"""
+    threads_list = []
+    thread_counter = 0
+    for thread_key in catalog_dict.keys():
+        thread_counter += 1
+        catalog_thread = catalog_dict[thread_key]
+        futabilly_thread = {
+            "no":thread_key,# thread number
+            "last_modified":catalog_thread["last_updated"],
+            }
+        threads_list += [futabilly_thread]
+
+    futabilly_catalog = [{
+        "threads":threads_list,
+        "page":0,
+        }]
+    return futabilly_catalog
 
 
 def dummy_save_images(board_config,thread_dict):
@@ -610,13 +630,6 @@ def dummy_save_images(board_config,thread_dict):
             	force_save=True,
             	allow_fail=False)
             continue
-
-
-
-
-
-
-
     logging.debug("thread_dict: "+repr(thread_dict))
     logging.debug("Finished saving images")
     return thread_dict
@@ -637,6 +650,12 @@ def dummy_save_thread(board_config,thread_dict):
     #dummy_save_images(board_config,thread_dict)
     logging.debug("Finished saving thread")
     return
+
+def test_futabilly_catalog_saving(board_config):
+    catalog_dict = read_catalog(board_config)
+    futabilly_save_catalog(board_config,catalog_dict)
+    return
+
 
 
 def bah():
@@ -688,7 +707,8 @@ def debug():
         "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
         "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
         "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
-        "shortname":"arch"
+        "shortname":"arch",#
+        "site_name":"ponychan",#
         }
 
 ##    process_thread(
@@ -701,11 +721,16 @@ def debug():
 ##        board_config=board_config_arch,
 ##        thread_number=19588
 ##        )
+##    process_thread(
+##        board_config=board_config_arch,
+##        thread_number=2504507
+##        )
 ##    return
-
-    process_catalog(
-        board_config = board_config_anon
-        )
+##    process_catalog(
+##        board_config = board_config_anon
+##        )
+    test_futabilly_catalog_saving(board_config = board_config_arch)
+    return
     process_catalog(
         board_config = board_config_arch
         )
