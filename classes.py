@@ -18,49 +18,108 @@ import config
 
 import ponychan
 
+
+
+
+
 class Image():
     """A single image"""
+    position_in_post = None# Images position out of all the images for this post, starting at 1 for the first
     html = None# Image segment HTML
     soup = None# Image segment HTML soup
+    post_html = None# HTML of parent post, used for some thumbnail stuff. eurgh
 
-    absolute_url = None
+    absolute_image_url = None
+    server_image_filename = None
+    server_image_filename_no_ext = None# For futabilly
     image_width = None
     image_height = None
-
     absolute_thumbnail_url = None
     thumbnail_width = None
     thumbnail_height = None
     thumbnail_filename = None
-
-##    md5base64_hash = None
-##    sha512_hash = None
-##    local_size_in_bytes = None# Locally determined size in bytes
     reported_filesize = None# Sites reported filesize of full image
-
-    extention = None
+    image_extention = None
     uploader_filename = None
     site_filename = None
     spoilered = None# True if image is spoilered, False if not spoilered
-    local_path = None# Path to local copy of image file
+##    md5base64_hash = None
+##    sha512_hash = None
+##    local_size_in_bytes = None# Locally determined size in bytes
+##    local_path = None# Path to local copy of image file
 
-    def __init__(self,image_segment_html):
+
+    def __init__(self,post_html,image_segment_html,position_in_post):
+        self.position_in_post = position_in_post
+        self.post_html = post_html
         self.html = image_segment_html
+        logging.debug("Image.__init__(): "+"self.html: "+repr(self.html))
         self.soup = BeautifulSoup(image_segment_html, "html5lib")# "lxml" and "html.parser" both fail on at least one /arch/ post
         return
 
     def find_spoiler_status(self):
         assert(self.html is not None)
+        if self.spoilered is not None:# Skip extraction if we have it
+            return self.spoilered
         # Find out if the image is spoilered
         # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1440564930079.png">1440564930079.png</a> <span class="morefileinfo">(Spoiler Image, 389.27 KB, 800x560, <a class="post-filename" download="1stporn.png" href="/anon/src/1440564930079.png" title="Save as original filename">1stporn.png</a>)</span></p>
         # <span class="morefileinfo">(Spoiler Image,
         self.spoilered = ("""src="/static/spoiler.png""" in self.html)
         return self.spoilered
 
-    def find_thumbnail_url(self):
+    def find_absolute_image_link(self):
         assert(self.html is not None)
-        if self.spoilered is None:
-            self.find_spoiler_status()
+        if self.absolute_image_url is not None:# Skip extraction if we have it
+            return self.absolute_image_url
+        # Find location of image file
+        # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
+        image_link = re.search("""href=["']([^"'<>"]+/src/[^"'<>"]+)["']>""", self.html, re.IGNORECASE).group(1)
+        if image_link[0] == u"/":# Convert relative links to absolute
+            #logging.info("Given relavtive link: "+repr(image_link))
+            absolute_image_link = "https://www.ponychan.net"+image_link
+        else:# If we already have an absolute link
+            #logging.info("Given absolute link: "+repr(image_link))
+            absolute_image_link = image_link
+        #logging.debug("absolute_image_link: "+repr(absolute_image_link))
+        assert(absolute_image_link[0:4]==u"http")
+        self.absolute_image_url = absolute_image_link
+        return self.absolute_image_url
 
+    def find_server_image_filename(self):
+        if self.server_image_filename is not None:# Skip extraction if we have it
+            return self.server_image_filename
+        if self.absolute_image_url is None:# We need this to figure out the filename
+            find_absolute_image_link()
+        # Get server filename for image
+        # ex. 1437401812560.jpg
+        server_image_filename = self.absolute_image_url.split("/")[-1]
+        self.server_image_filename = server_image_filename
+        return self.server_image_filename
+
+    def find_server_image_filename_no_ext(self):
+        if self.server_image_filename_no_ext is not None:# Skip extraction if we have it
+            return self.server_image_filename_no_ext
+        else:
+            find_image_extention(self)# This generates the value as a side-effect
+        return server_image_filename_no_ext
+
+    def find_image_extention(self):
+        if self.image_extention is not None:# Skip extraction if we have it
+            return self.image_extention
+        if self.server_image_filename is None:# We use this to figure out the extention
+            self.find_server_image_filename()
+        filename_split_search = re.search("""(.+)\.([^.]+?)$""", self.server_image_filename, re.IGNORECASE)
+        self.server_image_filename_no_ext = filename_split_search.group(1)
+        self.image_extention = filename_split_search.group(2)
+        return self.image_extention
+
+    def find_absolute_thumbnail_url(self):
+        assert(self.html is not None)
+        if self.absolute_image_url is not None:# Skip extraction if we have it
+            return self.absolute_image_url
+
+        if self.spoilered is None:# We can't figure this stuff if the image is spoilered
+            self.find_spoiler_status()
         if self.spoilered:
             self.absolute_thumbnail_url = None
         else:
@@ -86,10 +145,29 @@ class Image():
             self.thumbnail_width = None
             self.thumbnail_height = None
         else:
-            thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", self.html, re.IGNORECASE)
+            logging.debug("Image.find_absolute_thumbnail_url(): "+"self.post_html: "+repr(self.post_html))
+            thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", self.post_html, re.IGNORECASE)
             self.thumbnail_width = thumbnail_size_search.group(1)
             self.thumbnail_height = thumbnail_size_search.group(2)
         return (self.thumbnail_width, self.thumbnail_height)
+
+    def find_thumbnail_height(self):
+        if self.thumbnail_height is not None:# Skip extraction if we have it
+            return self.thumbnail_height
+        elif self.spoilered is True:
+            return None
+        else:
+            self.find_thumbnail_dimensions()
+            return self.thumbnail_height
+
+    def find_thumbnail_width(self):
+        if self.thumbnail_width is not None:# Skip extraction if we have it
+            return self.thumbnail_width
+        if self.spoilered is True:
+            return None
+        else:
+            self.find_thumbnail_dimensions()
+            return self.thumbnail_width
 
     def find_uploader_filename(self):
         assert(self.html is not None)
@@ -137,10 +215,22 @@ class Image():
         return self.reported_filesize
 
     def find_dimensions(self):
+        # Grab filesize and dimensions of fullsize image
+        # u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
         filesize_and_dimensions_string = self.soup.find(["span"], ["morefileinfo"]).text
         # Find (reported) dimensions of image
         self.image_width, self.image_height = ponychan.parse_dimensions(filesize_and_dimensions_string)
-        return self.image_width, self.image_height
+        return (self.image_width, self.image_height)
+
+    def find_image_width(self):
+        if self.image_width is None:
+            self.find_dimensions()
+        return self.image_width
+
+    def find_image_height(self):
+        if self.image_height is None:
+            self.find_dimensions()
+        return self.image_height
 
 ##    def find_md5_base64_hash(self):
 ##        pass
@@ -149,14 +239,9 @@ class Image():
 
 
 
-
-
-
-
-
-
 class Post():
     """A single post"""
+    position_in_thread = None# Post's position in the thread, starting at 1 for the first post
     html = None
     json = None
     soup = None
@@ -168,11 +253,19 @@ class Post():
     name = None
     tripcode = None
     email = None
-    number = None
+    post_number = None
+    thread_number = None
 
-    def __init__(self,post_html):
+    def __init__(self,post_html,thread_number,position_in_thread):
+        # Validate input
         assert(post_html is not None)
+        assert(thread_number is not None)
+        assert(position_in_thread is not None)
+        # Store input
+        self.position_in_thread = position_in_thread
+        self.thread_number = thread_number
         self.html = post_html
+        logging.debug("Post.__init__(): "+"self.html: "+repr(self.html))
         self.soup = BeautifulSoup(post_html, "html5lib")# "lxml" and "html.parser" both fail on at least one /arch/ post
         assert(self.soup is not None)
         return
@@ -196,6 +289,18 @@ class Post():
         self.is_op = post_is_op
         return self.is_op
 
+    def find_post_number(self):
+        assert(self.soup is not None)
+        # Get post number
+        # <a class="post_no citelink" href="/anon/res/538340.html#541018">541018</a>
+        post_number = int(self.soup.find(["a"], ["citelink"]).text)
+        self.post_number = post_number
+        return self.post_number
+
+    def find_thread_number(self):
+        assert(self.thread_number is not None)
+        return self.thread_number# This is required to instantiate this class, so we don't need to calculate it
+
     def find_time(self):
         assert(self.html is not None)
         # Get post time
@@ -203,7 +308,7 @@ class Post():
         # <time\sdatetime="([\w:-]+)">
         # u"2013-02-16T15:51:39Z"
         post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", self.html, re.IGNORECASE).group(1)
-        self.time = parse_ponychan_datetime(post_time_string)
+        self.time = ponychan.parse_ponychan_datetime(post_time_string)
         return self.time
 
     def find_name(self):
@@ -255,36 +360,92 @@ class Post():
         assert(self.soup is not None)
         image_soups = self.soup.findAll("p", ["fileinfo"])
         self.images = []
+        position_in_post = 0
         for image_soup in image_soups:
-            self.images.append( Image(image_html = image_soup.prettify()) )
+            position_in_post += 1
+            logging.debug("Post.find_images(): "+"self.html: "+repr(self.html))
+            self.images.append(
+                Image(
+                    post_html = self.html,
+                    image_segment_html = image_soup.prettify(),
+                    position_in_post = position_in_post
+                    )
+                )
+            continue
         return self.images
 
     def count_images():
         if self.images is None:
             find_images(self)
         self.image_count = len(self.images)
-        return self.images
-
-
-
+        return self.image_count
 
 
 
 class Thread():
     """A single thread"""
     posts = None# Array of posts for this thread
-    url = None
+    thread_url = None
     html = None
+    soup = None
 ##    json = None
     last_updated = None
     stickied = None
     locked = None
-    number = None
+    thread_number = None
+
+    def __init__(self,thread_number):
+        self.thread_number = thread_number
+        self.thread_url = self.generate_thread_url()
+        return
+
+    def generate_thread_url(self):
+        if self.thread_url is not None:
+            return self.thread_url
+        else:
+            self.thread_url = "https://www.ponychan.net/anon/res/"+str(self.thread_number)+".html"
+            return self.thread_url
 
     def update(self):
-        pass
+        """Load the HTML for the thread and refresh the posts list"""
+        html = get_url(self.thread_url)
+        if html is None:# Tolerate failures
+            logging.error("Filed to load thread HTML!")
+            return
+        self.html = html
+        self.last_updated = get_current_unix_time_8chan()
+        self.soup = BeautifulSoup(self.html, "html5lib")# "lxml" and "html.parser" both fail on at least one /arch/ post
+        logging.debug("Updated thread HTML")
+        # Refresh posts list
+        self.posts = None
+        self.split_posts()
+        return
+
     def split_posts(self):
-        pass
+        """Split the thread into posts and instantiate Post objects for them"""
+        assert(self.soup is not None)
+        # Seperate posts out
+        # Seperate post entries from the page HTML so we can process them seperately
+        # http://stackoverflow.com/questions/5041008/handling-class-attribute-in-beautifulsoup
+        post_html_segments = self.soup.findAll("div", ["postContainer","replyContainer"])
+        postition_in_thread = 0
+        self.posts = []
+        for post_html_segment in post_html_segments:
+            postition_in_thread += 1
+            self.posts.append(
+                Post(
+                    post_html=post_html_segment.prettify(),
+                    thread_number=self.thread_number,
+                    position_in_thread=postition_in_thread,
+                    )
+                )
+            continue
+        return self.posts
+
+    def get_posts(self):
+        assert(self.posts is not None)
+        return self.posts
+
 
 
 

@@ -10,6 +10,7 @@
 #-------------------------------------------------------------------------------
 
 from utils import *
+from classes import *
 
 # Code for Futabilly compatibility
 def futabilly_save_thread(board_config,thread_number,thread_dict):
@@ -65,13 +66,91 @@ def futabilly_format_catalog(board_config,catalog_dict):
 
 
 
+# Class stuff
+def dump_thread_to_futabilly(thread):
+    futabilly_thread_posts = []
+    for post in thread.get_posts():
+        futabilly_post_images = []
+        for post_image in post.find_images():
+            futabilly_post_image = {# 8chan style for odillitime's futabilly.
+                "absolute_media_link":post_image.find_absolute_image_link(),# Full URL to access image on server
+                "absolute_thumb_link":post_image.find_absolute_thumbnail_url(),# Server thumbnail link if it exists, else None
+                "ext":post_image.find_image_extention(),# Extention of image. u'ext': u'.jpg',
+                "filename":post_image.find_server_image_filename_no_ext(),# Server filename without extention. u'filename': u'12',
+                "fsize":post_image.find_reported_filesize(),# Size of file in bytes. u'fsize': 505901,
+                "h":post_image.find_image_height(),# Height of image. u'h': 1209,
+                #"md5":None,# MD5 of image, encoded in base64. u'md5': u'KDiHU3cHcwCPlIyTdROpmQ==',
+                "tim":post_image.find_server_image_filename_no_ext(),# OdiliTime> tim: is the timestamp in ms (usually matches the media filename)# u'tim': u'1444463324099-1',
+                "tn_h":post_image.find_thumbnail_height(),# Height of thumbnail. u'tn_h': 255,
+                "tn_w":post_image.find_thumbnail_width(),# Width of thumbnail. u'tn_w': 187,
+                "w":post_image.find_image_width(),# Width of image. u'w': 887},
+                }
+            futabilly_post_images += [futabilly_post_image]
+            continue
+
+        futabilly_thread_post = {# 8chan style for odillitime's futabilly
+            "com":post.find_comment(),# OdiliTime> com: is the comment
+            #"cyclical":None,# TODO
+            #"id":None,# TODO
+            #"last_modified":None,# TODO
+            #"locked":None,# TODO
+            "name":post.find_name(),# TODO
+            "no":post.find_post_number(),# OdiliTime> no: is the post number
+            "resto":post.find_thread_number(),# looks to be the thread number
+            #"sticky":None,# TODO
+            "time":post.find_time(),# OdiliTime> time: time of post
+            "email":post.find_email(),# u'email': u'sage',
+            "trip":post.find_tripcode(),# Tripcode
+            "sub":post.find_subject(),# Title / subject
+            "media":futabilly_post_images,# List/array of image info objects
+            }
+        logging.debug("futabilly_thread_post: "+repr(futabilly_thread_post))
+        futabilly_thread_posts += [futabilly_thread_post]
+        continue
+
+    futabilly_thread_dict = {# 8chan style for odillitime's futabilly
+        "posts":futabilly_thread_posts,# TODO
+        }
+    return futabilly_thread_dict
+# /Class stuff
 
 
+
+# Debug
+def debug():
+    """where stuff is called to debug and test"""
+    board_config_anon = {
+        "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
+        "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
+        "thread_url_suffix":".html",# The thread url after the thread number
+        "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
+        "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
+        "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
+        "shortname":"anon_class-based"
+        }
+    thread_number="532843"
+    thread = Thread(thread_number)
+    thread.update()
+    thread_dict = dump_thread_to_futabilly(thread)
+    futabilly_save_thread(
+        board_config=board_config_anon,
+        thread_number=thread_number,
+        thread_dict=thread_dict
+        )
+    return
+# /Debug
 
 
 
 def main():
-    pass
+    try:
+        setup_logging(log_file_path=os.path.join("debug","futabilly.py-log.txt"))
+        debug()
+    except Exception, e:# Log fatal exceptions
+        logging.critical("Unhandled exception!")
+        logging.exception(e)
+    return
+
 
 if __name__ == '__main__':
     main()
