@@ -18,22 +18,39 @@ from utils import * # General utility functions
 import sql_functions# Database interaction
 import config # Settings and configuration
 import tables# Database table definitions
+import ponychan
+from futabilly import *
 
 
 
 def run(board_config):
     """Run continually for a board"""
-    catalog = {}
     counter = 0
     while True:
         counter += 1
-        catalog = process_catalog(
-            board_config,
-            old_catalog=catalog
-            )
+        run_once(board_config)
         delay(board_config["rescan_delay"])
         continue
 
+
+def run_once(board_config):
+    # Load previous run's catalog if it exists
+    cached_catalog_dict = load_catalog_cache(board_config)
+    if cached_catalog_dict is None:# Create empty dict if we can't get a cached catalog
+        catalog_dict = {}
+    else:
+        catalog_dict = cached_catalog_dict
+    # Read the catalog and save threads if they need it
+    catalog_dict = process_catalog(
+        board_config,
+        old_catalog=catalog_dict
+        )
+    # Store the catalog data for next run
+    save_catalog_cache(
+        board_config,
+        catalog_dict=catalog_dict
+        )
+    return
 
 
 def process_catalog(board_config,old_catalog={}):
@@ -54,30 +71,24 @@ def process_catalog(board_config,old_catalog={}):
         old_catalog,
         new_catalog
         )
+
     # Run updates
+    thread_counter = 0
     for thread_to_update in threads_to_update:
+        thread_counter += 1
+        if thread_counter > 10:
+            break
         process_thread(board_config, thread_to_update)
         # Update date of last update to now
         new_catalog[thread_to_update]["last_updated"] = get_current_unix_time_8chan()
         continue
+
     # Update futabilly catalog JSON
     futabilly_save_catalog(
         board_config=board_config,
         catalog_dict=new_catalog
         )
     return new_catalog
-
-
-def merge_catalogs(old_catalog,new_catalog):
-    merged_catalog = {}
-    for new_catalog_thread_key in new_catalog.keys():
-        new_catalog_thread = old_catalog[new_catalog_thread_key]
-        if new_catalog_thread_key not in old_catalog.keys():
-            # This thread is new
-            pass
-
-
-
 
 
 def read_catalog(board_config):
@@ -126,7 +137,7 @@ def read_catalog(board_config):
             "reply_count":reply_count,# How many replies were we told the thread has?
             "thread_position_on_page":thread_position_on_page,# Where is the thread on the page, starting at 1
             "thread_number":thread_number,# Server side id for the thread
-            "last_updated":None
+            "last_updated":get_current_unix_time_8chan()
             }
         continue
     logging.debug("current_catalog_threads: "+repr(current_catalog_threads))
@@ -165,7 +176,6 @@ def compare_catalog_threads(board_config,old_catalog,new_catalog):
             logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
             continue
     return threads_to_update
-
 
 
 def process_thread(board_config,thread_number):
@@ -243,7 +253,7 @@ def process_thread(board_config,thread_number):
         # <time\sdatetime="([\w:-]+)">
         # u"2013-02-16T15:51:39Z"
         post_time_string = re.search("""<time\sdatetime="([\w:-]+)">""", post_html_segment_html, re.IGNORECASE).group(1)
-        post_time = parse_ponychan_datetime(post_time_string)
+        post_time = ponychan.parse_ponychan_datetime(post_time_string)
         #logging.debug("post_time: "+repr(post_time))
 
         # Get post username
@@ -281,7 +291,6 @@ def process_thread(board_config,thread_number):
             poster_tripcode = None# Represents the post having no email address
         #logging.debug("poster_tripcode: "+repr(poster_tripcode))
 
-
         # Find post image(s) (if any)
         post_image_segments = post_html_segment.findAll("p", ["fileinfo"])
         post_images = []# Staging for image data before we feed it into the post entry
@@ -291,8 +300,7 @@ def process_thread(board_config,thread_number):
             image_position += 1
             #logging.debug("post_image_segment: "+repr(post_image_segment))
             post_image_segment_html = post_image_segment.prettify()# So we only have to call prettify() once
-            #logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
-
+            logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
 
             # Find location of image file
             # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
@@ -352,7 +360,6 @@ def process_thread(board_config,thread_number):
                 thumbnail_width = thumbnail_size_search.group(1)
                 thumbnail_height = thumbnail_size_search.group(1)
 
-
             # Find original filename
             # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1437401812560.jpg">1437401812560.jpg</a> <span class="morefileinfo">(170.61 KB, 926x1205, <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>)</span></p>
             # <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>
@@ -367,6 +374,12 @@ def process_thread(board_config,thread_number):
             if original_image_filename_search:
                 original_image_filename = original_image_filename_search.group(1)
                 assert("/" not in original_image_filename)
+                # Ensure we got the original filename
+                original_image_filename_split_search = re.search("""(.+)\.([^.]+?)$""", original_image_filename, re.IGNORECASE)
+                if not original_image_filename_split_search:
+                    logging.error("Original filename could not be split into name/ext")
+                    original_image_filename = None
+
             elif board_config["shortname"] == "arch":
                 # Some threads in /arch/ don't work, so we just skip the original filename for those since they look like they don't have that
                 # post_image_segment_html: u'<p class="fileinfo">\n File:\n <a href="https://ml.ponychan.net/arch/src/mtr_1377068331997.jpg">\n  mtr_1377068331997.jpg\n </a>\n <span class="morefileinfo">\n  (73.54 KB, 680x738)\n </span>\n</p>\n'
@@ -378,9 +391,13 @@ def process_thread(board_config,thread_number):
                 assert(False)
             #logging.debug("original_image_filename: "+repr(original_image_filename))
 
-
             # Generate filename and ext for futabilly
-            futabilly_filename_split_search = re.search("""(.+).(.+?)""", post_image_segment_html, re.IGNORECASE)
+            if original_image_filename is None:
+                futabilly_unsplit_filename = server_image_filename
+            else:
+                futabilly_unsplit_filename = original_image_filename
+            logging.debug("futabilly_unsplit_filename: "+repr(futabilly_unsplit_filename))
+            futabilly_filename_split_search = re.search("""(.+)\.([^.]+?)$""", futabilly_unsplit_filename, re.IGNORECASE)
             futabilly_filename = futabilly_filename_split_search.group(1)
             image_extention = futabilly_filename_split_search.group(2)
             assert("." not in image_extention)
@@ -392,11 +409,11 @@ def process_thread(board_config,thread_number):
             # u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
             filesize_and_dimensions_string = post_image_segment.find(["span"], ["morefileinfo"]).text
             # Find (reported) filesize of image
-            reported_filesize = parse_filesize(filesize_and_dimensions_string)
+            reported_filesize = ponychan.parse_filesize(filesize_and_dimensions_string)
             #logging.debug("reported_filesize: "+repr(reported_filesize))
 
             # Find (reported) dimensions of image
-            image_width, image_height = parse_dimensions(filesize_and_dimensions_string)
+            image_width, image_height = ponychan.parse_dimensions(filesize_and_dimensions_string)
             #logging.debug("image_width: "+repr(image_width)+", image_height: "+repr(image_height))
 
             # Collect all data about image into once place for staging before DB stuff is done
@@ -422,13 +439,14 @@ def process_thread(board_config,thread_number):
             post_images += [post_image]
 
             futabilly_post_image = {# 8chan style for odillitime's futabilly.
-                "absolute_image_link":absolute_image_link,# Full URL to access image on server
+                "absolute_media_link":absolute_image_link,# Full URL to access image on server
+                "absolute_thumb_link":absolute_thumbnail_link,# Server thumbnail link if it exists, else None
                 "ext":image_extention,# Extention of image. u'ext': u'.jpg',
                 "filename":futabilly_filename,# Server filename without extention. u'filename': u'12',
                 "fsize":reported_filesize,# Size of file in bytes. u'fsize': 505901,
                 "h":image_height,# Height of image. u'h': 1209,
                 #"md5":None,# MD5 of image, encoded in base64. u'md5': u'KDiHU3cHcwCPlIyTdROpmQ==',
-                "tim":None,# OdiliTime> tim: is the timestamp in ms (usually matches the media filename)# u'tim': u'1444463324099-1',
+                "tim":server_image_filename,# OdiliTime> tim: is the timestamp in ms (usually matches the media filename)# u'tim': u'1444463324099-1',
                 "tn_h":thumbnail_height,# Height of thumbnail. u'tn_h': 255,
                 "tn_w":thumbnail_width,# Width of thumbnail. u'tn_w': 187,
                 "w":image_width,# Width of image. u'w': 887},
@@ -450,9 +468,8 @@ def process_thread(board_config,thread_number):
             "post_title":post_title,# The post title if it exists, else None object
             "poster_email":poster_email,# The email address given by the poster (If any), otherwise None
             "poster_tripcode":poster_tripcode,# tripcode of the post if there is one, otherwise None
-            #"NONE":None,# TODO
             }
-        #logging.debug("thread_post: "+repr(thread_post))
+        logging.debug("thread_post: "+repr(thread_post))
         thread_posts += [thread_post]
 
         futabilly_thread_post = {# 8chan style for odillitime's futabilly
@@ -469,7 +486,9 @@ def process_thread(board_config,thread_number):
             "email":poster_email,# u'email': u'sage',
             "trip":poster_tripcode,# Tripcode
             "sub":post_title,# Title / subject
+            "media":futabilly_post_images,# List/array of image info objects
             }
+        logging.debug("futabilly_thread_post: "+repr(futabilly_thread_post))
         futabilly_thread_posts += [futabilly_thread_post]
 
         continue
@@ -496,116 +515,42 @@ def process_thread(board_config,thread_number):
         thread_number=thread_number,
         thread_dict=futabilly_thread_dict
         )
-    return
 
     dummy_save_thread(board_config,thread_dict)
-    # Insert / update thread in DB
-    #TODO
     return
 
 
-def parse_filesize(filesize_string):
-    """
-    Convert *chan style filesize strings into number of bytes
-    input:
-        u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
-        u'(29 KB, 127x160, Zombieshy-Lurk.png)'
-    output:
-        174704
-    https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
-    """
-    #logging.debug("filesize_string: "+repr(filesize_string))
-    # Extract the number and unit
-    filesize_search = re.search("""(\d+(?:.\d+)?)\s+(\w?b),""", filesize_string, re.IGNORECASE)
-    number_string = filesize_search.group(1)# u"170.61"
-    unit_string = filesize_search.group(2).lower()# u"kb" OR u"b" OR u"mb"
-    unmultiplied_size = float(number_string)
-    # Multiply by the unit and return value
-    if unit_string == "b":# Bytes
-        return int(unmultiplied_size)
-    elif unit_string == "kb":# Kilobytes
-        return int(unmultiplied_size * 1024)
-    elif unit_string == "mb":# Megabytes
-        return int(unmultiplied_size * 1024 * 1024)
-    # Deal with invalid input
-    logging.error("Could not parse filesize!")
-    logging.debug("locals(): "+repr(locals()))
-    raise ValueError
+# Catalog caching
+def load_catalog_cache(board_config):
+    """Read back previously outputted catalog JSON cache"""
+    logging.debug("Loading catalog from cache...")
+    filename = "catalog_cache.json"
+    file_path = os.path.join("debug", "cache", board_config["shortname"], filename)
+    if not os.path.exists(file_path):
+        return None
+    catalog_json = read_file(file_path=file_path)
+    catalog_dict = json.loads(catalog_json)
+    logging.debug("Catalog loaded from cache.")
+    return catalog_dict
 
 
-def parse_dimensions(dimensions_string):
-    """
-    Convert *chan style dimensions strings into integers for height and width
-    input:
-        u'(170.61 KB, 926x1205, 428261__safe_human_upvotes+gal\u2026)'
-        u'\n  (73.54 KB, 680x738)\n </span>\n'
-    output:
-        (926, 1205)
-    https://github.com/eksopl/asagi/blob/master/src/main/java/net/easymodo/asagi/YotsubaHTML.java
-    """
-    #logging.debug("dimensions_string: "+repr(dimensions_string))
-    dimensions_search = re.search(""",\s?(\d+)x(\d+)""", dimensions_string, re.IGNORECASE)
-    width = int(dimensions_search.group(1))
-    height = int(dimensions_search.group(2))
-    assert(width > 0)
-    assert(height > 0)
-    return (width, height)
-
-
-
-
-
-def futabilly_save_thread(board_config,thread_number,thread_dict):
-    """Output JSON for futabilly"""
-    logging.debug("Saving futabilly thread...")
-    json_to_save = json.dumps(thread_dict)
-    filename = str(thread_number)+".json"
+def save_catalog_cache(board_config,catalog_dict):
+    """save catalog JSON cache"""
+    logging.debug("Saving cache catalog...")
+    json_to_save = json.dumps(catalog_dict)
+    filename = "catalog_cache.json"
     save_file(
-    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
+     file_path=os.path.join("debug", "cache", board_config["shortname"], filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
         )
-    logging.debug("Finished saving thread")
+    logging.debug("Finished saving catalog cache")
     return
+# /Catalog caching
 
 
-def futabilly_save_catalog(board_config,catalog_dict):
-    """Output JSON for futabilly"""
-    logging.debug("Saving futabilly catalog...")
-    futabilly_catalog = futabilly_format_catalog(board_config,catalog_dict)
-    json_to_save = json.dumps(futabilly_catalog)
-    filename = "threads.json"
-    save_file(
-    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
-    	data=json_to_save,
-    	force_save=True,
-    	allow_fail=False
-        )
-    logging.debug("Finished saving thread")
-    return
-
-
-def futabilly_format_catalog(board_config,catalog_dict):
-    """Convert internal catalog format to 8chan style format futabilly likes"""
-    threads_list = []
-    thread_counter = 0
-    for thread_key in catalog_dict.keys():
-        thread_counter += 1
-        catalog_thread = catalog_dict[thread_key]
-        futabilly_thread = {
-            "no":thread_key,# thread number
-            "last_modified":catalog_thread["last_updated"],
-            }
-        threads_list += [futabilly_thread]
-
-    futabilly_catalog = [{
-        "threads":threads_list,
-        "page":0,
-        }]
-    return futabilly_catalog
-
-
+# Debug
 def dummy_save_images(board_config,thread_dict):
     """Pretend to save images"""
     logging.debug("Saving images...")
@@ -635,7 +580,6 @@ def dummy_save_images(board_config,thread_dict):
     return thread_dict
 
 
-
 def dummy_save_thread(board_config,thread_dict):
     """Pretend to save the thread"""
     logging.debug("Saving thread...")
@@ -651,11 +595,11 @@ def dummy_save_thread(board_config,thread_dict):
     logging.debug("Finished saving thread")
     return
 
+
 def test_futabilly_catalog_saving(board_config):
     catalog_dict = read_catalog(board_config)
     futabilly_save_catalog(board_config,catalog_dict)
     return
-
 
 
 def bah():
@@ -679,12 +623,14 @@ def bah():
             logging.error("Could not load page: "+repr(page_url))
             return
 
+
 def explore_json():
     """Debug"""
     json_data = read_file(os.path.join("notes","6404920.json"))
     json_obj = json.loads(json_data)
     logging.debug("json_obj: "+repr(json_obj))
     return
+
 
 def debug():
     """where stuff is called to debug and test"""
@@ -726,15 +672,17 @@ def debug():
 ##        thread_number=2504507
 ##        )
 ##    return
+    run_once(board_config=board_config_anon)
+##    test_futabilly_catalog_saving(board_config = board_config_arch)
 ##    process_catalog(
 ##        board_config = board_config_anon
 ##        )
-    test_futabilly_catalog_saving(board_config = board_config_arch)
     return
     process_catalog(
         board_config = board_config_arch
         )
     return
+# /Debug
 
 
 def main():

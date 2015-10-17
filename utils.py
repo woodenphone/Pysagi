@@ -136,10 +136,10 @@ def save_file(file_path,data,force_save=False,allow_fail=False):
         raise
 
 
-def read_file(path):
+def read_file(file_path):
     """grab the contents of a file"""
-    assert_is_string(path)
-    f = open(path, "r")
+    assert_is_string(file_path)
+    f = open(file_path, "r")
     data = f.read()
     f.close()
     return data
@@ -720,33 +720,9 @@ def find_file_size(file_path):
 
 
 
-def parse_ponychan_datetime(time_string):
-    """
-    Parse ponychan's timestamp and output the equivalent in unixtime
-    The Z probably stands for "zulu" A.K.A. UTC+0
-    input:
-        2013-02-16T15:51:39Z
-    output:
-        bar
-    """
-    #logging.debug("time_string: "+repr(time_string))
-    # "2013-02-16T15:51:39Z"
-    # "%Y-%m-%dT%H:%M:%SZ"
-    post_time = time.strptime(time_string, "%Y-%m-%dT%H:%M:%SZ")
-    post_unix_time = calendar.timegm(post_time)
-    #logging.debug("post_unix_time: "+repr(post_unix_time))
-    return post_unix_time
-
-
-
-
-
-
-
-
 def main():
     # test parse_ponychan_datetime(time_string)
-    print parse_ponychan_datetime(time_string="""2013-02-16T15:51:39Z""")
+
     return
     # Test split_list
     print split_list(range(7), 2)
