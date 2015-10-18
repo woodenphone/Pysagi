@@ -447,16 +447,95 @@ class Thread():
         return self.posts
 
 
-
+class CatalogThread():
+    """Information about a thread used for update checks in catalog"""
+    last_updated = None# Timestamp for last update
+    thread_number = None
+    reply_count = None
+    position_in_catalog = None# Starting at 1 for the first
+    needs_update = None# Boolean, True if an update needs to be run, False if it doesn't, None if we don't know
 
 class Catalog():
     """A single board's catalog"""
-    threads = None
-    url = None
-    last_updated = None
+    current_version_threads = None# List of CatalogThread objects to compare for update checks
+    previous_version_threads = None# List of CatalogThread objects to compare for update checks
+    url = None# URL to the catalog page
+    html = None# Current catalog's HTML
+    last_updated = None# Timestamp for last update
 
     def update(self):
-        pass
+        html = get_url(self.thread_url)
+        if html is None:# Tolerate failures
+            logging.error("Filed to load thread HTML!")
+            return
+        self.html = html
+        self.last_updated = get_current_unix_time_8chan()
+        self.parse()
+
+    def parse(self):
+        """Parse thread information form the catalog"""
+        thread_position_on_page = 0# First thread on the page is thread 1
+        for thread_html_segment in thread_html_segments:
+            thread_position_on_page += 1
+            #logging.debug("thread_html_segment: "+repr(thread_html_segment))
+            thread_info = CatalogThread()
+            thread_info.position_in_catalog = thread_position_on_page
+
+            # Get thread number
+            catalink = thread_html_segment.find(["div","a"], ["catalink"])
+            relative_link = catalink.attrs[u"href"]
+            thread_number = int(re.search("""res/(\d+)""", relative_link, re.IGNORECASE).group(1))# ex. 532843
+            #logging.debug("thread_number: "+repr(thread_number))
+            thread_info.thread_number = thread_number
+
+            # Get reply count for thread
+            catacount = thread_html_segment.find("div", ["catacount"])
+            catacount_text = catacount.get_text()
+            reply_count = int(''.join(c for c in catacount_text if c.isdigit()))# ex. 12
+            #logging.debug("reply_count: "+repr(reply_count))
+            thread_info.reply_count = reply_count
+
+            # Store data about this thread for processing
+            thread_info.last_updated = get_current_unix_time_8chan()
+            continue
+        return
+
+    def select_thread_info(self,thread_number,thread_info_object_list):
+        for thread_info_object in thread_info_object_list:
+            if thread_info_object.thread_number == thread_number:
+                return thread_info_object
+        logging.debug("Thread info could not be found")
+        return None
+
+    def check_if_update_needed(current_version,previous_version):
+        """Compare two versions of a catalog thread and see if we need to run an update for it"""
+        # Was this in previous catalog?
+        if previous_version is None:
+            # We haven't saved this before, so save it
+            return True
+        # Compare the reply count
+        if current_version.reply_count != previous_version.reply_count:
+            logging.debug("Thread has more replies than previous catalog, triggering update. "+repr(current_version.thread_number))
+            return True
+        # Compare the thread position in the catalog
+        if thread_position_on_page > number_of_catalog_threads - 10:
+            # The thread is in the last 10 threads
+            logging.debug("Thread is in the last ten threads on the catalog, triggering update. "+repr(thread_number))
+            return True
+        # No check triggered update, no update needed
+        logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
+        return False
+
+    def compare(self):
+        """Compare thread info for the current version of the catalog against the previous version"""
+        for current_version in self.current_version_threads:
+            previous_version = select_thread_info(
+                thread_number=current_version.thread_number,
+                thread_info_object_list=self.previous_version_threads
+                )
+            current_version.needs_update = check_if_update_needed(current_version,previous_version)
+
+
 
 
 
