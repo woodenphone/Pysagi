@@ -367,7 +367,7 @@ class Post():
             self.images.append(
                 Image(
                     post_html = self.html,
-                    image_segment_html = image_soup.prettify(),
+                    image_segment_html = str(image_soup),
                     position_in_post = position_in_post
                     )
                 )
@@ -434,9 +434,9 @@ class Thread():
             postition_in_thread += 1
             self.posts.append(
                 Post(
-                    post_html=post_html_segment.prettify(),
-                    thread_number=self.thread_number,
-                    position_in_thread=postition_in_thread,
+                    post_html = str(post_html_segment),
+                    thread_number = self.thread_number,
+                    position_in_thread = postition_in_thread,
                     )
                 )
             continue
@@ -464,6 +464,7 @@ class Catalog():
     previous_version_threads = None# List of CatalogThreadInfo objects to compare for update checks
     url = "https://www.ponychan.net/anon/catalog.html"# URL to the catalog page
     html = None# Current catalog's HTML
+    soup = None
     last_updated = None# Timestamp for last update
 
     def __init__(self):
@@ -475,6 +476,7 @@ class Catalog():
             logging.error("Filed to load thread HTML!")
             return
         self.html = html
+        self.soup = None
         self.previous_version_threads = self.current_version_threads
         current_version_threads = None
         self.last_updated = get_current_unix_time_8chan()
@@ -483,6 +485,13 @@ class Catalog():
 
     def parse(self):
         """Parse thread information form the catalog"""
+        # Seperate thread entries from the page HTML so we can process them seperately
+        # http://stackoverflow.com/questions/5041008/handling-class-attribute-in-beautifulsoup
+        self.soup = BeautifulSoup(self.html, "html.parser")
+        thread_html_segments = self.soup.findAll("div", ["catathread", "catathread mature_thread"])
+
+        self.current_version_threads = []
+
         thread_position_on_page = 0# First thread on the page is thread 1
         for thread_html_segment in thread_html_segments:
             thread_position_on_page += 1
@@ -506,10 +515,13 @@ class Catalog():
 
             # Store data about this thread for processing
             thread_info.last_updated = get_current_unix_time_8chan()
+
+            self.current_version_threads.append(thread_info)
             continue
         return
 
     def select_thread_info(self,thread_number,thread_info_object_list):
+        assert(thread_info_object_list is not None)
         for thread_info_object in thread_info_object_list:
             if thread_info_object.thread_number == thread_number:
                 return thread_info_object
@@ -538,11 +550,15 @@ class Catalog():
     def run_update_check(self):
         """Compare thread info for the current version of the catalog against the previous version"""
         for current_version in self.current_version_threads:
-            previous_version = select_thread_info(
-                thread_number=current_version.thread_number,
-                thread_info_object_list=self.previous_version_threads
-                )
-            current_version.needs_update = check_if_update_needed(current_version,previous_version)
+            if self.previous_version_threads is None:
+                previous_version = None
+            else:
+                previous_version = self.select_thread_info(
+                    thread_number=current_version.thread_number,
+                    thread_info_object_list=self.previous_version_threads
+                    )
+            current_version.needs_update = self.check_if_update_needed(current_version,previous_version)
+            continue
         return
 
     def save_threads(self):

@@ -142,20 +142,19 @@ def debug():
         "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
         "shortname":"anon_class-based"
         }
-##    thread_number="532843"
-##    thread = Thread(thread_number)
-##    thread.update()
-##    thread_dict = dump_thread_to_futabilly(thread)
-##    futabilly_save_thread(
-##        board_config=board_config_anon,
-##        thread_number=thread_number,
-##        thread_dict=thread_dict
-##        )
+    thread_number="532843"
+    thread = Thread(thread_number)
+    thread.update()
+    thread_dict = dump_thread_to_futabilly(thread)
+    futabilly_save_thread(
+        board_config=board_config_anon,
+        thread_number=thread_number,
+        thread_dict=thread_dict
+        )
 
     catalog = Catalog()
     catalog.update()
-
-
+    catalog.parse()
     return
 # /Debug
 
