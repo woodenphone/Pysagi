@@ -447,7 +447,8 @@ class Thread():
         return self.posts
 
 
-class CatalogThread():
+
+class CatalogThreadInfo():
     """Information about a thread used for update checks in catalog"""
     last_updated = None# Timestamp for last update
     thread_number = None
@@ -455,22 +456,30 @@ class CatalogThread():
     position_in_catalog = None# Starting at 1 for the first
     needs_update = None# Boolean, True if an update needs to be run, False if it doesn't, None if we don't know
 
+
+
 class Catalog():
     """A single board's catalog"""
-    current_version_threads = None# List of CatalogThread objects to compare for update checks
-    previous_version_threads = None# List of CatalogThread objects to compare for update checks
-    url = None# URL to the catalog page
+    current_version_threads = None# List of CatalogThreadInfo objects to compare for update checks
+    previous_version_threads = None# List of CatalogThreadInfo objects to compare for update checks
+    url = "https://www.ponychan.net/anon/catalog.html"# URL to the catalog page
     html = None# Current catalog's HTML
     last_updated = None# Timestamp for last update
 
+    def __init__(self):
+        return
+
     def update(self):
-        html = get_url(self.thread_url)
+        html = get_url(self.url)
         if html is None:# Tolerate failures
             logging.error("Filed to load thread HTML!")
             return
         self.html = html
+        self.previous_version_threads = self.current_version_threads
+        current_version_threads = None
         self.last_updated = get_current_unix_time_8chan()
         self.parse()
+        self.run_update_check()
 
     def parse(self):
         """Parse thread information form the catalog"""
@@ -478,7 +487,7 @@ class Catalog():
         for thread_html_segment in thread_html_segments:
             thread_position_on_page += 1
             #logging.debug("thread_html_segment: "+repr(thread_html_segment))
-            thread_info = CatalogThread()
+            thread_info = CatalogThreadInfo()
             thread_info.position_in_catalog = thread_position_on_page
 
             # Get thread number
@@ -507,7 +516,7 @@ class Catalog():
         logging.debug("Thread info could not be found")
         return None
 
-    def check_if_update_needed(current_version,previous_version):
+    def check_if_update_needed(self,current_version,previous_version):
         """Compare two versions of a catalog thread and see if we need to run an update for it"""
         # Was this in previous catalog?
         if previous_version is None:
@@ -526,7 +535,7 @@ class Catalog():
         logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
         return False
 
-    def compare(self):
+    def run_update_check(self):
         """Compare thread info for the current version of the catalog against the previous version"""
         for current_version in self.current_version_threads:
             previous_version = select_thread_info(
@@ -534,8 +543,10 @@ class Catalog():
                 thread_info_object_list=self.previous_version_threads
                 )
             current_version.needs_update = check_if_update_needed(current_version,previous_version)
+        return
 
-
+    def save_threads(self):
+        """Save threads that need updating"""
 
 
 

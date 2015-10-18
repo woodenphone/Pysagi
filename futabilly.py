@@ -112,6 +112,20 @@ def dump_thread_to_futabilly(thread):
         "posts":futabilly_thread_posts,# TODO
         }
     return futabilly_thread_dict
+
+def process_catalog():
+    catalog = Catalog()
+    catalog.update()
+    for catalog_thread_info in catalog.current_version_threads:
+        if catalog_thread_info.needs_update:
+            thread = Thread(thread_number = catalog_thread_info.thread_number)
+            # Actually load the thread from the site
+            thread.update()
+            # Parse and save thread
+            dump_thread_to_futabilly(thread)
+            continue
+
+
 # /Class stuff
 
 
@@ -128,15 +142,20 @@ def debug():
         "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
         "shortname":"anon_class-based"
         }
-    thread_number="532843"
-    thread = Thread(thread_number)
-    thread.update()
-    thread_dict = dump_thread_to_futabilly(thread)
-    futabilly_save_thread(
-        board_config=board_config_anon,
-        thread_number=thread_number,
-        thread_dict=thread_dict
-        )
+##    thread_number="532843"
+##    thread = Thread(thread_number)
+##    thread.update()
+##    thread_dict = dump_thread_to_futabilly(thread)
+##    futabilly_save_thread(
+##        board_config=board_config_anon,
+##        thread_number=thread_number,
+##        thread_dict=thread_dict
+##        )
+
+    catalog = Catalog()
+    catalog.update()
+
+
     return
 # /Debug
 
