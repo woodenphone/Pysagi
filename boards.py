@@ -136,6 +136,19 @@ board_settings_list = [
     board_config_fan,
     ]
 
+
+
+
+
+def get_settings(board_shortname):
+    for board_settings_dict in board_settings_list:
+        if board_shortname == board_settings_dict["shortname"]:
+            return board_settings_dict
+    logging.error("Could not find board!")
+    logging.debug("locals(): "+repr(locals()))
+    raise ValueError
+
+
 def main():
     pass
 

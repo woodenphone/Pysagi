@@ -10,7 +10,9 @@
 #-------------------------------------------------------------------------------
 
 from utils import * # General utility functions
-import board_config
+import ponychan
+import boards
+import futabilly
 
 
 from flask import Flask
@@ -31,18 +33,21 @@ def info():
 
 @app.route("/<board_shortname>/threads.json")
 def serve_catalog(board_shortname):
-    file_path = os.path.join("hosted", "futabilly", board_shortname, "threads.json")
-    with open(file_path, "r") as f:
-        data = f.read()
-    return data
+    board_config = boards.get_settings(board_shortname)
+    catalog_dict = ponychan.read_catalog(board_config)
+    futabilly_catalog = futabilly.futabilly_format_catalog(board_config,catalog_dict)
+    json_to_send = json.dumps(futabilly_catalog)
+    return json_to_send
 
 
-@app.route("/<board_shortname>/res/<int:thread_num>.json")
-def serve_thread(board_shortname,thread_num):
-    file_path = os.path.join("hosted", "futabilly", board_shortname, "res", str(thread_num)+".json")
-    with open(file_path, "r") as f:
-        data = f.read()
-    return data
+@app.route("/<board_shortname>/res/<int:thread_number>.json")
+def serve_thread(board_shortname,thread_number):
+    board_config = boards.get_settings(board_shortname)
+    futabilly_thread_dict = ponychan.process_thread(board_config,thread_number)
+    if futabilly_thread_dict is None:
+        abort(404)
+    json_to_send = json.dumps(futabilly_thread_dict)
+    return json_to_send
 
 
 def main():
