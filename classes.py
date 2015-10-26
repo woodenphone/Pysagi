@@ -459,10 +459,11 @@ class CatalogThreadInfo():
 
 
 class Catalog():
-    """A single board's catalog"""
+    """A single board's catalog, not persisted outside RAM because i don't know how to do that"""
     current_version_threads = None# List of CatalogThreadInfo objects to compare for update checks
     previous_version_threads = None# List of CatalogThreadInfo objects to compare for update checks
     url = "https://www.ponychan.net/anon/catalog.html"# URL to the catalog page
+    catalog_cache_path = os.path.join("cache","ponychan.pickle")
     html = None# Current catalog's HTML
     soup = None
     last_updated = None# Timestamp for last update
@@ -563,7 +564,6 @@ class Catalog():
 
     def save_threads(self):
         """Save threads that need updating"""
-
 
 
 class Board():
