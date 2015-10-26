@@ -22,6 +22,13 @@ def hello():
     return "Hello World!"
 
 
+@app.route("/info")
+def info():
+    dir_path = os.path.join("hosted", "futabilly")
+    subdirs = os.walk(dir_path)[1]
+    return "Hello World!"
+
+
 @app.route("/<board_shortname>/threads.json")
 def serve_catalog(board_shortname):
     file_path = os.path.join("hosted", "futabilly", board_shortname, "threads.json")

@@ -79,8 +79,6 @@ def process_catalog(board_config,old_catalog={}):
     thread_counter = 0
     for thread_to_update in threads_to_update:
         thread_counter += 1
-        if thread_counter > 10:
-            break
         process_thread(board_config, thread_to_update)
         # Update date of last update to now
         new_catalog[thread_to_update]["last_updated"] = get_current_unix_time_8chan()
@@ -143,6 +141,7 @@ def read_catalog(board_config):
             "last_updated":get_current_unix_time_8chan()
             }
         continue
+    logging.debug("len(current_catalog_threads): "+repr(len(current_catalog_threads)))
     logging.debug("current_catalog_threads: "+repr(current_catalog_threads))
     return current_catalog_threads
 
@@ -174,6 +173,10 @@ def compare_catalog_threads(board_config,old_catalog,new_catalog):
             logging.debug("Thread is in the last ten threads on the catalog, triggering update. "+repr(thread_number))
             threads_to_update += [thread_number]
             continue
+        # Check that the output file actually exists
+        elif not os.path.exists(os.path.join(config.root_path, "", thread_number+".json")):
+            logging.debug("Thread is not saved on disk! triggering update. "+repr(thread_number))
+            threads_to_update += [thread_number]
         # No check triggered update, no update needed
         else:
             logging.debug("No comparison triggered an update for this thread. "+repr(thread_number))
@@ -190,7 +193,7 @@ def process_thread(board_config,thread_number):
     if thread_html is None:
     	logging.error("Could not load thread: "+repr(thread_url))
     	return
-    logging.debug("thread_html: "+repr(thread_html))
+    #logging.debug("thread_html: "+repr(thread_html))
     save_file(
     	file_path=os.path.join("debug","thread.html"),
     	data=thread_html,
@@ -303,7 +306,7 @@ def process_thread(board_config,thread_number):
             image_position += 1
             #logging.debug("post_image_segment: "+repr(post_image_segment))
             post_image_segment_html = post_image_segment.prettify()# So we only have to call prettify() once
-            logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
+            #logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
 
             # Find location of image file
             # ex. https://www.ponychan.net/anon/src/1437401812560.jpg
@@ -359,9 +362,14 @@ def process_thread(board_config,thread_number):
                 # style="width:125px;height:103px"
                 # style=['"]width:(\d+)px;height:(\d+)px['"]
                 # 125, 103
-                thumbnail_size_search = re.search("""style=['"]width:(\d+)px;height:(\d+)px['"]""", post_html_segment_html, re.IGNORECASE)
+                thumbnail_size_search = re.search("""style=['"]width:(\d*)px;height:(\d*)px['"]""", post_html_segment_html, re.IGNORECASE)
                 thumbnail_width = thumbnail_size_search.group(1)
-                thumbnail_height = thumbnail_size_search.group(1)
+                thumbnail_height = thumbnail_size_search.group(2)
+                if (len(thumbnail_width) == 0) or (len(thumbnail_height) == 0):# Sometimes these values are omitted
+                    logging.warning("This post had bad thumbnail size information.")
+                    logging.debug("post_html_segment_html: "+repr(post_html_segment_html))
+                    thumbnail_width = None
+                    thumbnail_height = None
 
             # Find original filename
             # post_image_segment: <p class="fileinfo">File: <a href="/anon/src/1437401812560.jpg">1437401812560.jpg</a> <span class="morefileinfo">(170.61 KB, 926x1205, <a class="post-filename" data-fn-fullname="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" download="428261__safe_human_upvotes+galore_crying_lyra+heartstrings_sad_hug_artist-colon-aymint.png" href="/anon/src/1437401812560.jpg" title="Save as original filename">428261__safe_human_upvotes+gal\u2026</a>)</span></p>
@@ -399,7 +407,7 @@ def process_thread(board_config,thread_number):
                 futabilly_unsplit_filename = server_image_filename
             else:
                 futabilly_unsplit_filename = original_image_filename
-            logging.debug("futabilly_unsplit_filename: "+repr(futabilly_unsplit_filename))
+            #logging.debug("futabilly_unsplit_filename: "+repr(futabilly_unsplit_filename))
             futabilly_filename_split_search = re.search("""(.+)\.([^.]+?)$""", futabilly_unsplit_filename, re.IGNORECASE)
             futabilly_filename = futabilly_filename_split_search.group(1)
             image_extention = futabilly_filename_split_search.group(2)
@@ -472,7 +480,7 @@ def process_thread(board_config,thread_number):
             "poster_email":poster_email,# The email address given by the poster (If any), otherwise None
             "poster_tripcode":poster_tripcode,# tripcode of the post if there is one, otherwise None
             }
-        logging.debug("thread_post: "+repr(thread_post))
+        #logging.debug("thread_post: "+repr(thread_post))
         thread_posts += [thread_post]
 
         futabilly_thread_post = {# 8chan style for odillitime's futabilly
@@ -491,7 +499,7 @@ def process_thread(board_config,thread_number):
             "sub":post_title,# Title / subject
             "media":futabilly_post_images,# List/array of image info objects
             }
-        logging.debug("futabilly_thread_post: "+repr(futabilly_thread_post))
+        #logging.debug("futabilly_thread_post: "+repr(futabilly_thread_post))
         futabilly_thread_posts += [futabilly_thread_post]
 
         continue
@@ -518,8 +526,6 @@ def process_thread(board_config,thread_number):
         thread_number=thread_number,
         thread_dict=futabilly_thread_dict
         )
-
-    dummy_save_thread(board_config,thread_dict)
     return
 
 
@@ -528,7 +534,7 @@ def load_catalog_cache(board_config):
     """Read back previously outputted catalog JSON cache"""
     logging.debug("Loading catalog from cache...")
     filename = "catalog_cache.json"
-    file_path = os.path.join("debug", "cache", board_config["shortname"], filename)
+    file_path = os.path.join(config.root_path, "cache", board_config["shortname"], filename)
     if not os.path.exists(file_path):
         return None
     catalog_json = read_file(file_path=file_path)
@@ -543,7 +549,7 @@ def save_catalog_cache(board_config,catalog_dict):
     json_to_save = json.dumps(catalog_dict)
     filename = "catalog_cache.json"
     save_file(
-     file_path=os.path.join("debug", "cache", board_config["shortname"], filename),
+     file_path=os.path.join(config.root_path, "cache", board_config["shortname"], filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
@@ -637,7 +643,13 @@ def explore_json():
 
 def debug():
     """where stuff is called to debug and test"""
-    run_once(board_config=boards.board_config_anon)
+    #run_once(board_config=boards.board_config_anon)
+
+    process_thread(
+        board_config = boards.board_config_site,
+        thread_number = "243"
+        )
+    return
     process_catalog(
         board_config = boards.board_config_arch
         )
@@ -648,7 +660,8 @@ def debug():
 def main():
     try:
         setup_logging(log_file_path=os.path.join("debug","pysagi-log.txt"))
-        run()
+        #run()
+        debug()
     except Exception, e:# Log fatal exceptions
         logging.critical("Unhandled exception!")
         logging.exception(e)
