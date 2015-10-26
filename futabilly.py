@@ -19,7 +19,7 @@ def futabilly_save_thread(board_config,thread_number,thread_dict):
     json_to_save = json.dumps(thread_dict)
     filename = str(thread_number)+".json"
     save_file(
-    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], "res", filename),
+    	file_path=os.path.join("hosted", "futabilly", board_config["shortname"], "res", filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
@@ -35,7 +35,7 @@ def futabilly_save_catalog(board_config,catalog_dict):
     json_to_save = json.dumps(futabilly_catalog)
     filename = "threads.json"
     save_file(
-    	file_path=os.path.join("debug", "futabilly", board_config["shortname"], filename),
+    	file_path=os.path.join("hosted", "futabilly", board_config["shortname"], filename),
     	data=json_to_save,
     	force_save=True,
     	allow_fail=False
