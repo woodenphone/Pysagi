@@ -20,17 +20,20 @@ import config # Settings and configuration
 import tables# Database table definitions
 import ponychan
 from futabilly import *
+import boards
 
 
-
-def run(board_config):
-    """Run continually for a board"""
+def run():
+    """Run continually"""
+    logging.info("Processing boards until something stops us...")
     counter = 0
     while True:
-        counter += 1
-        run_once(board_config)
-        delay(board_config["rescan_delay"])
-        continue
+        for board_config in boards.board_settings_list:
+            counter += 1
+            run_once(board_config)
+            continue
+        logging.info("Processed all boards")
+        delay(60)
 
 
 def run_once(board_config):
@@ -634,52 +637,9 @@ def explore_json():
 
 def debug():
     """where stuff is called to debug and test"""
-    #session = sql_functions.connect_to_db()
-    #session = None#dummy
-    #explore_json()
-    board_config_anon = {
-        "catalog_page_url":"https://www.ponychan.net/anon/catalog.html",# Absolute URL to access catalog page
-        "thread_url_prefix":"https://www.ponychan.net/anon/res/",# The thread url before the thread number
-        "thread_url_suffix":".html",# The thread url after the thread number
-        "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
-        "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
-        "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
-        "shortname":"anon"
-        }
-    board_config_arch = {
-        "catalog_page_url":"https://www.ponychan.net/arch/catalog.html",# Absolute URL to access catalog page
-        "thread_url_prefix":"https://www.ponychan.net/arch/res/",# The thread url before the thread number
-        "thread_url_suffix":".html",# The thread url after the thread number
-        "relative_image_link_prefix":"https://www.ponychan.net",#The image link before /anon/src/1437401812560.jpg
-        "relative_thumbnail_link_prefix":"https://www.ponychan.net",# #The thumbnail link before /anon/thumb/1441401127342.png
-        "rescan_delay":60,# Time to pause after each cycle of scannign catalog and threads
-        "shortname":"arch",#
-        "site_name":"ponychan",#
-        }
-
-##    process_thread(
-##        #session=session,
-##        board_config=board_config_arch,
-##        thread_number=2517907
-##        )
-##    process_thread(
-##        #session=session,
-##        board_config=board_config_arch,
-##        thread_number=19588
-##        )
-##    process_thread(
-##        board_config=board_config_arch,
-##        thread_number=2504507
-##        )
-##    return
-    run_once(board_config=board_config_anon)
-##    test_futabilly_catalog_saving(board_config = board_config_arch)
-##    process_catalog(
-##        board_config = board_config_anon
-##        )
-    return
+    run_once(board_config=boards.board_config_anon)
     process_catalog(
-        board_config = board_config_arch
+        board_config = boards.board_config_arch
         )
     return
 # /Debug
@@ -688,7 +648,7 @@ def debug():
 def main():
     try:
         setup_logging(log_file_path=os.path.join("debug","pysagi-log.txt"))
-        debug()
+        run()
     except Exception, e:# Log fatal exceptions
         logging.critical("Unhandled exception!")
         logging.exception(e)
