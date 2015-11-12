@@ -231,6 +231,8 @@ def process_thread(board_config,thread_number):
                 original_image_filename_split_search = re.search("""(.+)\.([^.]+?)$""", original_image_filename, re.IGNORECASE)
                 if not original_image_filename_split_search:
                     logging.error("Original filename could not be split into name/ext")
+                    logging.debug("post_image_segment_html: "+repr(post_image_segment_html))
+                    logging.debug("original_image_filename: "+repr(original_image_filename))
                     original_image_filename = None
 
             elif board_config["shortname"] == "arch":
